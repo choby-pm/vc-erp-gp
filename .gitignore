@@ -41,5 +41,7 @@ yarn-error.log*
 next-env.d.ts
 
 # job posting image (not for public repo)
-*.png
-!public/**/*.png
+똑똑 PM 채용 공고.png
+
+.vercel
+.env*
