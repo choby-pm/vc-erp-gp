@@ -106,7 +106,8 @@ erDiagram
 
 | 영역 | 테이블 | 단계 |
 |---|---|---|
-| 기준 정보 | `users`, `limited_partners`, `companies` | 공통 |
+| 기준 정보 | `users`, `staff`, `limited_partners`, `companies` | 공통 |
+| 운용 인력 | `fund_managers` | 1. 기획 ~ 청산 |
 | 조합 | `funds`, `fund_terms`, `related_institutions` | 1. 기획, 3. 결성 |
 | 모집·조합원 | `lp_proposals`, `fund_members` | 2. 모집, 3. 결성 |
 | 돈의 원장 | `ledger_entries` | 전 단계 |
@@ -118,7 +119,7 @@ erDiagram
 | LP 연동 | `notices`, `notice_recipients`, `integration_events` | 전 단계 |
 | API 공통 | `idempotency_keys`, `sessions` | 전 단계 |
 
-테이블 29개, 계산용 뷰 4개.
+테이블 31개, 계산용 뷰 4개.
 
 ---
 
@@ -542,6 +543,41 @@ erDiagram
 > - LP 시스템이 잠시 꺼져 있어도 `pending` 으로 남아 있다가 나중에 다시 보낸다
 > - 받는 쪽은 이벤트 `id` 로 중복 수신을 걸러낸다
 
+### 4-10b. 구성원·운용 인력 (D31, D32)
+
+#### `staff` — 구성원
+| 컬럼 | 자료형 | 설명 |
+|---|---|---|
+| 🔑 `id` | uuid | |
+| ❗✨ `employee_no` | text | 사번 |
+| ❗ `name`, `position` | text | 이름, 직위 |
+| `department`, `email`, `phone` | text | 부서, 업무 이메일, 전화번호 |
+| ❗ `hired_date` | date | 입사일 |
+| `left_date` | date | 퇴사일. 비어 있으면 재직 중 |
+| ✨🔗 `user_id` | uuid → users | 연결된 로그인 계정 (1:1, 없을 수 있음) |
+
+> **설계 의도**: 로그인 계정(`users`)과 인사 정보(`staff`)를 나눈다. 로그인하지 않는 구성원도 운용 인력으로 지정할 수 있고,
+> 퇴사해도 행을 지우지 않아 "누가 이 조합을 운용했는지" 기록이 남는다. 퇴사하면 연결된 계정의 `users.disabled_at` 이 채워져 로그인이 막힌다.
+> "조합원"(`fund_members`)과 헷갈리지 않도록 영어 이름을 `staff` 로 정했다.
+
+#### `fund_managers` — 조합 운용 인력
+| 컬럼 | 자료형 | 설명 |
+|---|---|---|
+| 🔑 `id` | uuid | |
+| ❗🔗 `fund_id` | uuid → funds | |
+| ❗🔗 `staff_id` | uuid → staff | |
+| ❗ `role` | text | `lead`(대표펀드매니저) / `key`(핵심운용인력) / `general`(운용인력) |
+| ❗ `start_date` | date | 선임일 |
+| `end_date` | date | 해임일. 비어 있으면 현재 담당 중 |
+| 🔗 `appointed_by_agenda_id` | uuid → agendas | 결성 이후 선임의 근거 안건 |
+| 🔗 `ended_by_agenda_id` | uuid → agendas | 결성 이후 해임의 근거 안건 |
+
+> **설계 의도**: 교체할 때 행을 고치지 않고 기존 행에 종료일을 넣고 새 행을 추가해 **교체 이력**을 남긴다.
+> 결성 이후 교체는 총회 가결 안건(`manager_change`)이 있어야 한다 (D32).
+> DB가 직접 막는 규칙: 조합당 현재 대표펀드매니저 1명, 한 구성원은 한 조합에서 동시에 한 역할만 (부분 유일 인덱스).
+
+`users` 에는 `disabled_at`(계정 중지 시각) 컬럼을 추가했다. `agendas.agenda_type` 에 `manager_change`(운용 인력 교체)를 추가했다.
+
 ### 4-11. API 공통
 
 #### `idempotency_keys` — 중복 요청 방지 (D22)
@@ -635,9 +671,9 @@ LP 연동 API는 이 표를 기준으로 데이터를 걸러서 내보낸다.
 | 등급 | 테이블 | LP가 보는 범위 |
 |---|---|---|
 | 🟢 본인 것만 공개 | `ledger_entries`, `capital_call_items`, `distribution_items`, `votes`, `notice_recipients`, `lp_proposals`(상태·금액만) | 자기 `lp_id` 에 해당하는 행만 |
-| 🔵 조합 단위 공개 | `funds`, `fund_terms`, `capital_calls`, `distributions`, `general_meetings`, `agendas`, `reports`(`published`만), `notices`(`sent`만), `related_institutions` | 자기가 조합원인 조합의 행 |
+| 🔵 조합 단위 공개 | `funds`, `fund_terms`, `capital_calls`, `distributions`, `general_meetings`, `agendas`, `reports`(`published`만), `notices`(`sent`만), `related_institutions`, `fund_managers`(구성원 이름·직위·역할·기간만) | 자기가 조합원인 조합의 행 |
 | 🟡 요약만 공개 | `investments`, `valuations`, `exits`, `companies` | 정기 보고 스냅샷에 포함된 숫자로만 |
-| 🔴 비공개 | `deals`, `deal_stage_history`, `deal_notes`, `users`, `management_fee_charges`, `integration_events`, `idempotency_keys`, `sessions`, 모든 `memo` 컬럼 | 공개하지 않음 |
+| 🔴 비공개 | `deals`, `deal_stage_history`, `deal_notes`, `users`, `staff`(운용 인력으로 공개되는 이름·직위 외), `management_fee_charges`, `integration_events`, `idempotency_keys`, `sessions`, 모든 `memo` 컬럼 | 공개하지 않음 |
 
 > **설계 의도**: 공개 여부를 행마다 체크하는 대신 **테이블 단위 등급**으로 정했다.
 > 기준이 단순해서 실수로 새는 데이터가 생기기 어렵고, 면접에서 "LP에게 무엇을 보여주나?"에 표 하나로 답할 수 있다.

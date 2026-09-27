@@ -22,3 +22,10 @@ export async function verifyPassword(password: string, stored: string): Promise<
   // 비교 시간이 항상 같아서, 응답 속도로 비밀번호를 추측할 수 없다
   return timingSafeEqual(actual, expected);
 }
+
+// 임시 비밀번호: 헷갈리기 쉬운 글자(0/O, 1/l/I)를 뺀 12자리
+export function generateTempPassword(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  const bytes = randomBytes(12);
+  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
+}
