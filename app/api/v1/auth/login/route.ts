@@ -1,0 +1,27 @@
+import { sql } from "@/lib/db";
+import { fail, ok, readJson } from "@/lib/api/response";
+import { verifyPassword } from "@/lib/auth/password";
+import { createSession } from "@/lib/auth/session";
+
+// POST /api/v1/auth/login — 이메일·비밀번호 로그인 (05 API 설계 3-1)
+export async function POST(request: Request) {
+  const body = await readJson<{ email?: unknown; password?: unknown }>(request);
+  const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+  const password = typeof body?.password === "string" ? body.password : "";
+
+  if (!email || !password) {
+    return fail(400, "VALIDATION_ERROR", "이메일과 비밀번호를 입력하세요");
+  }
+
+  const [user] = await sql<{ id: string; email: string; name: string; password_hash: string }[]>`
+    select id, email, name, password_hash from users where email = ${email}
+  `;
+
+  // 이메일이 없는 경우와 비밀번호가 틀린 경우를 같은 문구로 답해, 가입된 이메일을 알아낼 수 없게 한다
+  if (!user || !(await verifyPassword(password, user.password_hash))) {
+    return fail(401, "UNAUTHORIZED", "이메일 또는 비밀번호가 올바르지 않습니다");
+  }
+
+  await createSession(user.id);
+  return ok({ id: user.id, email: user.email, name: user.name });
+}
