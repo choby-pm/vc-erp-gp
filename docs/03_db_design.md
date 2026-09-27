@@ -449,7 +449,7 @@ erDiagram
 | ❗🔗 `fund_id` | uuid → funds | |
 | ❗ `period_type` | text | `quarterly` / `semiannual` / `annual` |
 | ❗ `period_start`, `period_end` | date | |
-| ❗ `snapshot` | jsonb | 발송 시점 펀드 숫자 묶음 (약정·납입·투자·평가·분배) |
+| `snapshot` | jsonb | 발행 시점 펀드 숫자 묶음 (약정·납입·투자·평가·분배). 초안은 비움, 발행 시 필수 |
 | `gp_comment` | text | GP 코멘트 |
 | ❗ `status` | text | `draft` / `published` |
 
