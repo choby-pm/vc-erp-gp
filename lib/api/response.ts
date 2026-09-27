@@ -8,6 +8,13 @@ export function ok<T>(data: T, status = 200) {
   return NextResponse.json({ data }, { status });
 }
 
+// 목록 응답: { "data": [...], "meta": { page, page_size, total } }
+export type ListMeta = { page: number; page_size: number; total: number };
+
+export function okList<T>(data: T[], meta: ListMeta) {
+  return NextResponse.json({ data, meta });
+}
+
 type ErrorOptions = { rule?: string; details?: Record<string, unknown> };
 
 export function fail(status: number, code: string, message: string, options: ErrorOptions = {}) {

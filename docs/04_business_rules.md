@@ -80,6 +80,12 @@ planning ──① → fundraising ──② → formed ──③ → operating 
 
 ## 3. 모집·결성
 
+### 3-0. 출자자 기준 정보
+
+- **BR-LP-01 사업자등록번호 중복 금지**: 같은 사업자등록번호의 출자자는 한 명만 등록할 수 있다 (`DUPLICATE_REGISTRATION_NO`). 하이픈 유무와 상관없이 숫자 10자리로 비교하고 `123-45-67890` 형태로 저장한다. 중복이면 기존 출자자를 함께 알려준다.
+- **BR-LP-02 개인 식별번호 저장 금지**: 개인 출자자는 사업자등록번호를 입력하지 않으며, 주민등록번호 등 개인 식별번호는 어떤 형태로도 저장하지 않는다.
+- **BR-LP-03 검색**: 이름·사업자등록번호·담당자명으로 검색한다. 검색어의 `%` `_` 는 글자 그대로 찾는다.
+
 ### 3-1. 출자 제안
 
 - **BR-PROP-01 단계 이동**: `proposed → reviewing → committed` 또는 `→ declined`. `committed`, `declined` 는 되돌릴 수 없다.
@@ -372,6 +378,7 @@ sourcing → reviewing → ic → approved
 | `BELOW_MIN_FUND_SIZE` | BR-FUND-09, BR-FUND-02 | 최소 결성액 이상이어야 합니다 (조합 유형·결성 주체별 기준 함께 표시) |
 | `INVALID_UNIT_AMOUNT` | BR-TERM-05 | 1좌 금액이 기준보다 작습니다 |
 | `COMMITMENT_NOT_UNIT_MULTIPLE` | BR-MEM-07 | 약정액은 1좌 금액의 배수여야 합니다 |
+| `DUPLICATE_REGISTRATION_NO` | BR-LP-01 | 이미 등록된 사업자등록번호입니다 (기존 출자자 링크 함께 표시) |
 
 ---
 

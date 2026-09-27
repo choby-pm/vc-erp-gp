@@ -32,5 +32,17 @@ export const FUND_STATUS_LABEL: Record<FundStatus, string> = {
   liquidated: "청산 완료",
 };
 
+export const LP_TYPES = ["policy", "pension", "financial", "corporate", "individual", "other"] as const;
+export type LpType = (typeof LP_TYPES)[number];
+
+export const LP_TYPE_LABEL: Record<LpType, string> = {
+  policy: "정책 출자기관",
+  pension: "연기금·공제회",
+  financial: "금융기관",
+  corporate: "일반 기업",
+  individual: "개인",
+  other: "기타",
+};
+
 // 기본 정보·규약 버전 1을 고칠 수 있는 상태 (BR-FUND-08, BR-TERM-01)
 export const EDITABLE_FUND_STATUSES: FundStatus[] = ["planning", "fundraising"];
