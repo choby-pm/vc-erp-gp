@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { formatKRW, percentToRatio, ratioToPercent } from "@/lib/format";
-import { FUND_TYPES, FUND_TYPE_LABEL, type FundType } from "@/lib/labels";
+import { FUND_TYPES, FUND_TYPE_LABEL, GP_TYPES, GP_TYPE_LABEL, type FundType, type GpType } from "@/lib/labels";
+import { LARGE_AMOUNT_WARNING, getFundMinimum } from "@/lib/rules/fund-minimums";
 import type { FundDetail } from "@/lib/services/funds";
 
 // 펀드 생성·수정 공용 폼. 비율은 화면에서 %로 입력받고 API에는 소수(0.02)로 보낸다
@@ -46,6 +47,8 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
 
   const [name, setName] = useState(fund?.name ?? "");
   const [fundType, setFundType] = useState<FundType>(fund?.fund_type ?? "venture");
+  const [gpType, setGpType] = useState<GpType>(fund?.gp_type ?? "venture_capital");
+  const [unitAmount, setUnitAmount] = useState(fund ? String(fund.terms.unit_amount) : "1000000");
   const [targetAmount, setTargetAmount] = useState(fund ? String(fund.target_amount) : "");
   const [termYears, setTermYears] = useState(fund ? String(fund.term_years) : "8");
   const [investmentYears, setInvestmentYears] = useState(fund ? String(fund.investment_period_years) : "4");
@@ -63,6 +66,8 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
   const [saving, setSaving] = useState(false);
 
   const target = Number(targetAmount.replaceAll(",", ""));
+  const unit = Number(unitAmount);
+  const minimum = getFundMinimum(fundType, gpType);
   const toNumber = (v: string) => (v.trim() === "" ? undefined : Number(v));
 
   async function send(url: string, method: string, body: unknown, prefix: string) {
@@ -72,7 +77,8 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
     const fields = (error?.details?.fields ?? {}) as Errors;
     setErrors((prev) => ({
       ...prev,
-      ...Object.fromEntries(Object.entries(fields).map(([k, v]) => [prefix + k, v])),
+      // 서버가 "terms.unit_amount" 처럼 위치를 붙여 보낸 항목은 그대로, 나머지는 요청 종류(prefix)를 붙인다
+      ...Object.fromEntries(Object.entries(fields).map(([k, v]) => [k.includes(".") ? k : prefix + k, v])),
     }));
     throw new Error(error?.message ?? "저장하지 못했습니다");
   }
@@ -86,12 +92,14 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
     const basic = {
       name,
       fund_type: fundType,
+      gp_type: gpType,
       target_amount: toNumber(targetAmount.replaceAll(",", "")),
       term_years: toNumber(termYears),
       investment_period_years: toNumber(investmentYears),
     };
     const terms = {
       primary_purpose: primaryPurpose,
+      unit_amount: toNumber(unitAmount),
       ...Object.fromEntries(
         TERM_FIELDS.map(({ key }) => {
           const p = toNumber(termPercents[key]);
@@ -102,8 +110,9 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
 
     try {
       if (fund) {
-        await send(`/api/v1/funds/${fund.id}`, "PATCH", basic, "fund.");
+        // 규약을 먼저 저장한다. 펀드 유형을 바꾸면 기본 정보 저장 때 새 유형 기준으로 1좌 금액을 다시 검사한다
         await send(`/api/v1/funds/${fund.id}/terms/1`, "PUT", terms, "terms.");
+        await send(`/api/v1/funds/${fund.id}`, "PATCH", basic, "fund.");
         router.push(`/funds/${fund.id}`);
       } else {
         const created = await send("/api/v1/funds", "POST", { fund: basic, terms }, "");
@@ -116,6 +125,19 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
     }
   }
 
+  // 사용자가 값을 고치면 그 칸의 오류 안내를 지운다.
+  // 펀드 유형·결성 주체가 바뀌면 최소 기준이 달라지므로 목표 결성액·1좌 금액 안내도 함께 지운다
+  function clearErrorOnEdit(e: React.FormEvent<HTMLFormElement>) {
+    const key = (e.target as HTMLInputElement).name;
+    if (!key) return;
+    const related = key === "fund.fund_type" || key === "fund.gp_type" ? ["fund.target_amount", "terms.unit_amount"] : [];
+    setErrors((prev) => {
+      const next = { ...prev };
+      for (const k of [key, ...related]) delete next[k];
+      return next;
+    });
+  }
+
   const fieldError = (key: string) =>
     errors[key] ? <p className="mt-1 text-xs text-red-600">{errors[key]}</p> : null;
   const inputClass = (key: string) =>
@@ -124,18 +146,18 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
     }`;
 
   return (
-    <form onSubmit={onSubmit} className="space-y-6">
+    <form onSubmit={onSubmit} onChange={clearErrorOnEdit} className="space-y-6">
       <section className="rounded-2xl border border-slate-200 bg-white p-6">
         <h2 className="text-base font-semibold text-slate-900">기본 정보</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="block sm:col-span-2">
             <span className="text-sm font-medium text-slate-700">펀드명</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 그로스 1호 벤처투자조합" className={inputClass("fund.name")} />
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 그로스 1호 벤처투자조합" name="fund.name" className={inputClass("fund.name")} />
             {fieldError("fund.name")}
           </label>
           <label className="block">
             <span className="text-sm font-medium text-slate-700">펀드 유형</span>
-            <select value={fundType} onChange={(e) => setFundType(e.target.value as FundType)} className={inputClass("fund.fund_type")}>
+            <select value={fundType} onChange={(e) => setFundType(e.target.value as FundType)} name="fund.fund_type" className={inputClass("fund.fund_type")}>
               {FUND_TYPES.map((t) => (
                 <option key={t} value={t}>
                   {FUND_TYPE_LABEL[t]}
@@ -145,25 +167,48 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
             {fieldError("fund.fund_type")}
           </label>
           <label className="block">
+            <span className="text-sm font-medium text-slate-700">결성 주체</span>
+            <select value={gpType} onChange={(e) => setGpType(e.target.value as GpType)} name="fund.gp_type" className={inputClass("fund.gp_type")}>
+              {GP_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {GP_TYPE_LABEL[t]}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-500">펀드를 결성하는 운용사의 자격. 최소 결성액 기준이 달라집니다</p>
+            {fieldError("fund.gp_type")}
+          </label>
+          <label className="block sm:col-span-2">
             <span className="text-sm font-medium text-slate-700">목표 결성액 (원)</span>
             <input
               inputMode="numeric"
               value={targetAmount === "" ? "" : Number(targetAmount.replaceAll(",", "")).toLocaleString("ko-KR")}
               onChange={(e) => setTargetAmount(e.target.value.replace(/[^0-9]/g, ""))}
               placeholder="10,000,000,000"
-              className={`${inputClass("fund.target_amount")} text-right tabular-nums`}
+              name="fund.target_amount" className={`${inputClass("fund.target_amount")} text-right tabular-nums`}
             />
-            <p className="mt-1 text-xs text-slate-500">{target > 0 ? `= ${formatKRW(target)}` : "원 단위로 입력"}</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {target > 0 ? `= ${formatKRW(target)}` : "원 단위로 입력"}
+              {" · "}
+              {minimum.minFundAmount !== null
+                ? `최소 ${formatKRW(minimum.minFundAmount)} 이상 (${minimum.basis})`
+                : `${minimum.basis}`}
+            </p>
+            {target > LARGE_AMOUNT_WARNING && (
+              <p className="mt-1 text-xs font-medium text-amber-700">
+                {formatKRW(target)}이 맞나요? 0이 더 붙지 않았는지 확인하세요.
+              </p>
+            )}
             {fieldError("fund.target_amount")}
           </label>
           <label className="block">
             <span className="text-sm font-medium text-slate-700">존속 기간 (년)</span>
-            <input type="number" min={1} value={termYears} onChange={(e) => setTermYears(e.target.value)} className={inputClass("fund.term_years")} />
+            <input type="number" min={1} value={termYears} onChange={(e) => setTermYears(e.target.value)} name="fund.term_years" className={inputClass("fund.term_years")} />
             {fieldError("fund.term_years")}
           </label>
           <label className="block">
             <span className="text-sm font-medium text-slate-700">투자 기간 (년)</span>
-            <input type="number" min={1} value={investmentYears} onChange={(e) => setInvestmentYears(e.target.value)} className={inputClass("fund.investment_period_years")} />
+            <input type="number" min={1} value={investmentYears} onChange={(e) => setInvestmentYears(e.target.value)} name="fund.investment_period_years" className={inputClass("fund.investment_period_years")} />
             <p className="mt-1 text-xs text-slate-500">신규 투자가 가능한 기간. 존속 기간 이하</p>
             {fieldError("fund.investment_period_years")}
           </label>
@@ -178,8 +223,25 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="block sm:col-span-2">
             <span className="text-sm font-medium text-slate-700">주목적 투자 분야</span>
-            <input value={primaryPurpose} onChange={(e) => setPrimaryPurpose(e.target.value)} placeholder="예: 업력 3년 이내 초기 창업기업" className={inputClass("terms.primary_purpose")} />
+            <input value={primaryPurpose} onChange={(e) => setPrimaryPurpose(e.target.value)} placeholder="예: 업력 3년 이내 초기 창업기업" name="terms.primary_purpose" className={inputClass("terms.primary_purpose")} />
             {fieldError("terms.primary_purpose")}
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700">1좌 금액 (원)</span>
+            <input
+              inputMode="numeric"
+              value={unitAmount === "" ? "" : Number(unitAmount).toLocaleString("ko-KR")}
+              onChange={(e) => setUnitAmount(e.target.value.replace(/[^0-9]/g, ""))}
+              name="terms.unit_amount" className={`${inputClass("terms.unit_amount")} text-right tabular-nums`}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              조합원 약정액은 이 금액의 배수여야 합니다
+              {minimum.minUnitAmount !== null && ` · 최소 ${formatKRW(minimum.minUnitAmount)} 이상`}
+            </p>
+            {unit > 0 && target > 0 && target % unit !== 0 && (
+              <p className="mt-1 text-xs text-amber-700">목표 결성액이 1좌 금액으로 나누어떨어지지 않습니다</p>
+            )}
+            {fieldError("terms.unit_amount")}
           </label>
           {TERM_FIELDS.map(({ key, label, hint }) => (
             <label key={key} className="block">
@@ -192,7 +254,7 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
                   max={100}
                   value={termPercents[key]}
                   onChange={(e) => setTermPercents((prev) => ({ ...prev, [key]: e.target.value }))}
-                  className={`${inputClass(`terms.${key}`)} pr-8 text-right tabular-nums`}
+                  name={`terms.${key}`} className={`${inputClass(`terms.${key}`)} pr-8 text-right tabular-nums`}
                 />
                 <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 pt-1 text-sm text-slate-400">%</span>
               </div>

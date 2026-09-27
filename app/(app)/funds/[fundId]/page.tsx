@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { FundLifecycle, FundStatusBadge } from "@/components/fund-status";
 import { formatDate, formatKRW, formatKRWFull, formatPercent } from "@/lib/format";
-import { FUND_TYPE_LABEL } from "@/lib/labels";
+import { FUND_TYPE_LABEL, GP_TYPE_LABEL } from "@/lib/labels";
 import { getFund } from "@/lib/services/funds";
 import { loadOrNotFound } from "@/lib/page-helpers";
 
@@ -12,7 +12,16 @@ export default async function FundDetailPage(props: PageProps<"/funds/[fundId]">
 
   const basic: [string, React.ReactNode][] = [
     ["펀드 유형", FUND_TYPE_LABEL[fund.fund_type]],
+    ["결성 주체", GP_TYPE_LABEL[fund.gp_type]],
     ["목표 결성액", <span key="t" title={formatKRWFull(fund.target_amount)}>{formatKRW(fund.target_amount)}</span>],
+    [
+      "최소 결성액",
+      fund.minimum.minFundAmount !== null ? (
+        formatKRW(fund.minimum.minFundAmount)
+      ) : (
+        <span key="m" className="text-amber-700">기준 확인 필요</span>
+      ),
+    ],
     ["존속 기간", `${fund.term_years}년`],
     ["투자 기간", `${fund.investment_period_years}년`],
     ["결성일", fund.formation_date ? formatDate(fund.formation_date) : "결성 전"],
@@ -21,6 +30,7 @@ export default async function FundDetailPage(props: PageProps<"/funds/[fundId]">
 
   const terms: [string, string][] = [
     ["주목적 투자 분야", t.primary_purpose],
+    ["1좌 금액", formatKRWFull(t.unit_amount)],
     ["주목적 의무 비율", formatPercent(t.primary_purpose_min_ratio)],
     ["GP 의무 출자 비율", formatPercent(t.gp_commitment_min_ratio)],
     ["관리보수율 (투자 기간)", `연 ${formatPercent(t.management_fee_rate)} · 약정 총액 기준`],
