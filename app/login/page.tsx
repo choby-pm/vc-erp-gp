@@ -14,7 +14,7 @@ export default async function LoginPage() {
         <div className="mb-8 text-center">
           <p className="text-xs font-semibold tracking-widest text-indigo-600">VC ERP</p>
           <h1 className="mt-1 text-2xl font-bold text-slate-900">GP 운용 시스템</h1>
-          <p className="mt-2 text-sm text-slate-500">펀드 기획부터 청산까지</p>
+          <p className="mt-2 text-sm text-slate-500">조합 기획부터 청산까지</p>
         </div>
         <LoginForm />
       </div>

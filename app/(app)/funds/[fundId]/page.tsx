@@ -11,7 +11,7 @@ export default async function FundDetailPage(props: PageProps<"/funds/[fundId]">
   const t = fund.terms;
 
   const basic: [string, React.ReactNode][] = [
-    ["펀드 유형", FUND_TYPE_LABEL[fund.fund_type]],
+    ["조합 유형", FUND_TYPE_LABEL[fund.fund_type]],
     ["결성 주체", GP_TYPE_LABEL[fund.gp_type]],
     ["목표 결성액", <span key="t" title={formatKRWFull(fund.target_amount)}>{formatKRW(fund.target_amount)}</span>],
     [
@@ -44,7 +44,7 @@ export default async function FundDetailPage(props: PageProps<"/funds/[fundId]">
     <div className="space-y-6">
       <div>
         <Link href="/funds" className="text-sm text-slate-500 hover:text-indigo-600">
-          ← 펀드 목록
+          ← 조합 목록
         </Link>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-bold text-slate-900">{fund.name}</h1>

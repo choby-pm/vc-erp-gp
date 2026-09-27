@@ -1,15 +1,15 @@
 import { z } from "zod";
 import { FUND_TYPES, GP_TYPES } from "@/lib/labels";
 
-// 펀드 API 요청 형식 (05 API 설계 3-3). 비율은 소수(0.02 = 2%)로 받는다
+// 조합 API 요청 형식 (05 API 설계 3-3). 비율은 소수(0.02 = 2%)로 받는다
 
 const ratio = (label: string) =>
   z.number({ error: `${label}을(를) 입력하세요` }).min(0, `${label}은(는) 0% 이상이어야 합니다`).max(1, `${label}은(는) 100% 이하여야 합니다`);
 
 export const fundBasicSchema = z
   .object({
-    name: z.string({ error: "펀드명을 입력하세요" }).trim().min(1, "펀드명을 입력하세요").max(100, "펀드명은 100자 이하로 입력하세요"),
-    fund_type: z.enum(FUND_TYPES, { error: "펀드 유형을 선택하세요" }),
+    name: z.string({ error: "조합명을 입력하세요" }).trim().min(1, "조합명을 입력하세요").max(100, "조합명은 100자 이하로 입력하세요"),
+    fund_type: z.enum(FUND_TYPES, { error: "조합 유형을 선택하세요" }),
     gp_type: z.enum(GP_TYPES, { error: "결성 주체 유형을 선택하세요" }),
     target_amount: z
       .number({ error: "목표 결성액을 입력하세요" })

@@ -5,7 +5,7 @@ import { getFund, updateFundBasic } from "@/lib/services/funds";
 
 type Ctx = RouteContext<"/api/v1/funds/[fund_id]">;
 
-// GET /api/v1/funds/{fund_id} — 펀드 상세 + 현재 규약 + 요약 숫자
+// GET /api/v1/funds/{fund_id} — 조합 상세 + 현재 규약 + 요약 숫자
 export const GET = withUser<Ctx>(async (_request, ctx) => {
   const { fund_id } = await ctx.params;
   return ok(await getFund(fund_id));

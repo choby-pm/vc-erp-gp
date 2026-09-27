@@ -7,7 +7,7 @@ import { FUND_TYPES, FUND_TYPE_LABEL, GP_TYPES, GP_TYPE_LABEL, type FundType, ty
 import { LARGE_AMOUNT_WARNING, getFundMinimum } from "@/lib/rules/fund-minimums";
 import type { FundDetail } from "@/lib/services/funds";
 
-// 펀드 생성·수정 공용 폼. 비율은 화면에서 %로 입력받고 API에는 소수(0.02)로 보낸다
+// 조합 생성·수정 공용 폼. 비율은 화면에서 %로 입력받고 API에는 소수(0.02)로 보낸다
 
 type TermKey =
   | "primary_purpose_min_ratio"
@@ -28,7 +28,7 @@ const TERM_FIELDS: { key: TermKey; label: string; hint: string }[] = [
   { key: "quorum_ratio", label: "총회 가결 기준", hint: "전체 의결권 대비 찬성 비율" },
 ];
 
-// 새 펀드에 미리 채워두는 일반적인 예시값 (실제 규약에 맞게 수정)
+// 새 조합에 미리 채워두는 일반적인 예시값 (실제 규약에 맞게 수정)
 const EXAMPLE_TERMS: Record<TermKey, number> = {
   primary_purpose_min_ratio: 60,
   gp_commitment_min_ratio: 1,
@@ -110,7 +110,7 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
 
     try {
       if (fund) {
-        // 규약을 먼저 저장한다. 펀드 유형을 바꾸면 기본 정보 저장 때 새 유형 기준으로 1좌 금액을 다시 검사한다
+        // 규약을 먼저 저장한다. 조합 유형을 바꾸면 기본 정보 저장 때 새 유형 기준으로 1좌 금액을 다시 검사한다
         await send(`/api/v1/funds/${fund.id}/terms/1`, "PUT", terms, "terms.");
         await send(`/api/v1/funds/${fund.id}`, "PATCH", basic, "fund.");
         router.push(`/funds/${fund.id}`);
@@ -126,7 +126,7 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
   }
 
   // 사용자가 값을 고치면 그 칸의 오류 안내를 지운다.
-  // 펀드 유형·결성 주체가 바뀌면 최소 기준이 달라지므로 목표 결성액·1좌 금액 안내도 함께 지운다
+  // 조합 유형·결성 주체가 바뀌면 최소 기준이 달라지므로 목표 결성액·1좌 금액 안내도 함께 지운다
   function clearErrorOnEdit(e: React.FormEvent<HTMLFormElement>) {
     const key = (e.target as HTMLInputElement).name;
     if (!key) return;
@@ -151,12 +151,12 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
         <h2 className="text-base font-semibold text-slate-900">기본 정보</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="block sm:col-span-2">
-            <span className="text-sm font-medium text-slate-700">펀드명</span>
+            <span className="text-sm font-medium text-slate-700">조합명</span>
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 그로스 1호 벤처투자조합" name="fund.name" className={inputClass("fund.name")} />
             {fieldError("fund.name")}
           </label>
           <label className="block">
-            <span className="text-sm font-medium text-slate-700">펀드 유형</span>
+            <span className="text-sm font-medium text-slate-700">조합 유형</span>
             <select value={fundType} onChange={(e) => setFundType(e.target.value as FundType)} name="fund.fund_type" className={inputClass("fund.fund_type")}>
               {FUND_TYPES.map((t) => (
                 <option key={t} value={t}>
@@ -175,7 +175,7 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-xs text-slate-500">펀드를 결성하는 운용사의 자격. 최소 결성액 기준이 달라집니다</p>
+            <p className="mt-1 text-xs text-slate-500">조합을 결성하는 운용사의 자격. 최소 결성액 기준이 달라집니다</p>
             {fieldError("fund.gp_type")}
           </label>
           <label className="block sm:col-span-2">
@@ -276,7 +276,7 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
           취소
         </button>
         <button type="submit" disabled={saving} className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60">
-          {saving ? "저장 중…" : isEdit ? "저장" : "펀드 만들기"}
+          {saving ? "저장 중…" : isEdit ? "저장" : "조합 만들기"}
         </button>
       </div>
     </form>

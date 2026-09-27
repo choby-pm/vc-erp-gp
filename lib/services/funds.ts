@@ -5,7 +5,7 @@ import { EDITABLE_FUND_STATUSES, type FundStatus, type FundType, type GpType } f
 import { getFundMinimum, type FundMinimum } from "@/lib/rules/fund-minimums";
 import type { FundBasicInput, FundTermsInput } from "@/lib/schemas/fund";
 
-// 펀드 서비스: SQL을 직접 작성해 펀드·규약을 조회·저장한다.
+// 조합 서비스: SQL을 직접 작성해 조합·규약을 조회·저장한다.
 // API(쓰기)와 화면(읽기)이 모두 이 함수들을 쓴다.
 
 export type FundListItem = {
@@ -63,7 +63,7 @@ function parseTerms(row: Record<string, unknown>): FundTerms {
 
 // ─── 최소 결성 기준 검사 (D29) ─────────────────────────────────────────────
 
-// BR-FUND-09: 목표 결성액이 최소 결성액보다 작으면 처음부터 결성할 수 없는 펀드다
+// BR-FUND-09: 목표 결성액이 최소 결성액보다 작으면 처음부터 결성할 수 없는 조합이다
 function assertTargetMeetsMinimum(fund: Pick<FundBasicInput, "fund_type" | "gp_type" | "target_amount">, fieldPrefix: string) {
   const { minFundAmount, basis } = getFundMinimum(fund.fund_type, fund.gp_type);
   if (minFundAmount !== null && fund.target_amount < minFundAmount) {
@@ -98,7 +98,7 @@ export async function listFunds(): Promise<FundListItem[]> {
 }
 
 export async function getFund(fundId: string): Promise<FundDetail> {
-  assertUuid(fundId, "펀드를");
+  assertUuid(fundId, "조합을");
 
   const [fund] = await sql`
     select f.id, f.name, f.fund_type, f.gp_type, f.status, f.target_amount, f.term_years, f.investment_period_years,
@@ -108,7 +108,7 @@ export async function getFund(fundId: string): Promise<FundDetail> {
     join v_fund_summary s on s.fund_id = f.id
     where f.id = ${fundId}
   `;
-  if (!fund) throw notFound("펀드를");
+  if (!fund) throw notFound("조합을");
 
   // 가장 최신 규약 버전 (날짜 기준 적용 버전 조회는 R5 규약 변경에서 추가, BR-TERM-04)
   const [terms] = await sql`
@@ -134,7 +134,7 @@ export async function getFund(fundId: string): Promise<FundDetail> {
 
 // ─── 생성·수정 ─────────────────────────────────────────────────────────────
 
-// 펀드 생성: 펀드와 규약 버전 1을 하나의 트랜잭션으로 저장한다 (BR-COM-01)
+// 조합 생성: 조합과 규약 버전 1을 하나의 트랜잭션으로 저장한다 (BR-COM-01)
 export async function createFund(fund: FundBasicInput, terms: FundTermsInput, userId: string) {
   assertTargetMeetsMinimum(fund, "fund.");
   assertUnitAmount(fund, terms.unit_amount, "terms.");
@@ -154,13 +154,13 @@ export async function createFund(fund: FundBasicInput, terms: FundTermsInput, us
   });
 }
 
-// 기획·모집 중일 때만 수정 가능. 수정하는 동안 펀드 행을 잠가 상태가 바뀌는 것을 막는다 (BR-COM-02)
+// 기획·모집 중일 때만 수정 가능. 수정하는 동안 조합 행을 잠가 상태가 바뀌는 것을 막는다 (BR-COM-02)
 async function lockEditableFund(tx: typeof sql, fundId: string, rule: string) {
-  assertUuid(fundId, "펀드를");
+  assertUuid(fundId, "조합을");
   const [row] = await tx<{ status: FundStatus; fund_type: FundType; gp_type: GpType }[]>`
     select status, fund_type, gp_type from funds where id = ${fundId} for update
   `;
-  if (!row) throw notFound("펀드를");
+  if (!row) throw notFound("조합을");
   if (!EDITABLE_FUND_STATUSES.includes(row.status)) {
     throw statusNotAllowed(rule, "결성 이후에는 수정할 수 없습니다. 규약 변경은 총회 가결 안건이 필요합니다");
   }
@@ -172,7 +172,7 @@ export async function updateFundBasic(fundId: string, fund: FundBasicInput) {
   await sql.begin(async (tx) => {
     await lockEditableFund(tx as unknown as typeof sql, fundId, "BR-FUND-08");
 
-    // 펀드 유형이 바뀌면 기존 1좌 금액이 새 기준에 맞는지도 다시 확인한다
+    // 조합 유형이 바뀌면 기존 1좌 금액이 새 기준에 맞는지도 다시 확인한다
     const [terms] = await tx<{ unit_amount: number }[]>`
       select unit_amount from fund_terms where fund_id = ${fundId} and version = 1
     `;
