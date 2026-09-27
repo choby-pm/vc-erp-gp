@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-// 릴리스가 진행되면서 메뉴가 늘어난다 (출자자: R1-2, 딜: R4)
+// 릴리스가 진행되면서 메뉴가 늘어난다 (딜: R4)
 const LINKS = [
   { href: "/funds", label: "조합", ready: true },
-  { href: "/lps", label: "출자자", ready: false },
+  { href: "/lps", label: "출자자", ready: true },
   { href: "/deals", label: "딜", ready: false },
 ];
 
