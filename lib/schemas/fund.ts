@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FUND_TYPES } from "@/lib/labels";
+import { FUND_TYPES, GP_TYPES } from "@/lib/labels";
 
 // 펀드 API 요청 형식 (05 API 설계 3-3). 비율은 소수(0.02 = 2%)로 받는다
 
@@ -10,6 +10,7 @@ export const fundBasicSchema = z
   .object({
     name: z.string({ error: "펀드명을 입력하세요" }).trim().min(1, "펀드명을 입력하세요").max(100, "펀드명은 100자 이하로 입력하세요"),
     fund_type: z.enum(FUND_TYPES, { error: "펀드 유형을 선택하세요" }),
+    gp_type: z.enum(GP_TYPES, { error: "결성 주체 유형을 선택하세요" }),
     target_amount: z
       .number({ error: "목표 결성액을 입력하세요" })
       .int("목표 결성액은 원 단위 정수로 입력하세요")
@@ -28,6 +29,11 @@ export const fundBasicSchema = z
 
 export const fundTermsSchema = z.object({
   primary_purpose: z.string({ error: "주목적 투자 분야를 입력하세요" }).trim().min(1, "주목적 투자 분야를 입력하세요").max(200),
+  unit_amount: z
+    .number({ error: "1좌 금액을 입력하세요" })
+    .int("1좌 금액은 원 단위 정수로 입력하세요")
+    .positive("1좌 금액은 0보다 커야 합니다")
+    .max(Number.MAX_SAFE_INTEGER, "금액이 너무 큽니다"),
   primary_purpose_min_ratio: ratio("주목적 의무 비율"),
   gp_commitment_min_ratio: ratio("GP 의무 출자 비율"),
   management_fee_rate: ratio("관리보수율(투자 기간)"),

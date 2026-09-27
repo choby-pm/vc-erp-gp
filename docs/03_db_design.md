@@ -192,7 +192,8 @@ erDiagram
 |---|---|---|
 | 🔑 `id` | uuid | |
 | ❗ `name` | text | |
-| ❗ `fund_type` | text | `venture` / `new_tech` |
+| ❗ `fund_type` | text | `venture` / `individual` / `new_tech` |
+| ❗ `gp_type` | text | 결성 주체: `accelerator` / `venture_capital` / `new_tech_finance` / `other` (D29) |
 | ❗ `status` | text | `planning` / `fundraising` / `formed` / `operating` / `dissolved` / `liquidated` |
 | ❗ `target_amount` | bigint | 목표 결성액 |
 | ❗ `term_years` | integer | 존속 기간 |
@@ -213,6 +214,7 @@ erDiagram
 | ❗🔗 `fund_id` | uuid → funds | |
 | ❗ `version` | integer | 1부터 시작. `(fund_id, version)` ✨ |
 | ❗ `primary_purpose` | text | 주목적 투자 분야 설명 |
+| ❗ `unit_amount` | bigint | 출자 1좌 금액. 약정액은 이 금액의 배수 (D29) |
 | ❗ `primary_purpose_min_ratio` | numeric | 주목적 의무 비율 |
 | ❗ `gp_commitment_min_ratio` | numeric | GP 의무 출자 비율 |
 | ❗ `management_fee_rate` | numeric | 투자 기간 중 관리보수율 (약정 총액 기준) |

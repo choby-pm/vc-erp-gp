@@ -1,8 +1,11 @@
 // 화면 표시용 숫자 형식
 
-// 1억 이상은 "150억 원", 그 아래는 "3,000,000원"
+// 1조 이상은 "1.5조 원", 1억 이상은 "150억 원", 그 아래는 "3,000,000원"
 export function formatKRW(amount: number | null | undefined): string {
   if (amount === null || amount === undefined) return "-";
+  if (Math.abs(amount) >= 1_000_000_000_000) {
+    return `${(amount / 1_000_000_000_000).toLocaleString("ko-KR", { maximumFractionDigits: 2 })}조 원`;
+  }
   if (Math.abs(amount) >= 100_000_000) {
     return `${(amount / 100_000_000).toLocaleString("ko-KR", { maximumFractionDigits: 2 })}억 원`;
   }

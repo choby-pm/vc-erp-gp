@@ -1,11 +1,23 @@
 // 코드값 → 화면 표시 이름 (02 용어 정의 기준)
 
-export const FUND_TYPES = ["venture", "new_tech"] as const;
+export const FUND_TYPES = ["venture", "individual", "new_tech"] as const;
 export type FundType = (typeof FUND_TYPES)[number];
 
 export const FUND_TYPE_LABEL: Record<FundType, string> = {
   venture: "벤처투자조합",
+  individual: "개인투자조합",
   new_tech: "신기술사업투자조합",
+};
+
+// 결성 주체 유형 (D29)
+export const GP_TYPES = ["accelerator", "venture_capital", "new_tech_finance", "other"] as const;
+export type GpType = (typeof GP_TYPES)[number];
+
+export const GP_TYPE_LABEL: Record<GpType, string> = {
+  accelerator: "창업기획자 (액셀러레이터)",
+  venture_capital: "벤처투자회사 (구 창투사)",
+  new_tech_finance: "신기술사업금융회사 (신기사)",
+  other: "기타 (개인 등)",
 };
 
 export const FUND_STATUSES = ["planning", "fundraising", "formed", "operating", "dissolved", "liquidated"] as const;
