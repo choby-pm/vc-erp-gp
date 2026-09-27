@@ -116,9 +116,9 @@ erDiagram
 | 총회·보고 | `general_meetings`, `agendas`, `votes`, `reports` | 5. 보고·총회 |
 | 회수·분배 | `exits`, `distributions`, `distribution_items` | 6. 회수·청산 |
 | LP 연동 | `notices`, `notice_recipients`, `integration_events` | 전 단계 |
-| API 공통 | `idempotency_keys` | 전 단계 |
+| API 공통 | `idempotency_keys`, `sessions` | 전 단계 |
 
-테이블 28개, 계산용 뷰 4개.
+테이블 29개, 계산용 뷰 4개.
 
 ---
 
@@ -556,6 +556,20 @@ erDiagram
 > **설계 의도**: 돈이 움직이는 요청이 두 번 들어와도 한 번만 처리한다. 두 번째 요청에는 저장해둔 첫 응답을 그대로 돌려준다.
 > 05 API 설계 2-5 참고. 업무 데이터가 아니라서 UUID `id` 대신 키 자체를 기본 키로 쓴다.
 
+#### `sessions` — 로그인 세션 (D27)
+| 컬럼 | 자료형 | 설명 |
+|---|---|---|
+| 🔑 `id` | uuid | |
+| ❗🔗 `user_id` | uuid → users | |
+| ❗✨ `token_hash` | text | 쿠키에 넣은 무작위 토큰의 SHA-256 지문 |
+| ❗ `expires_at` | timestamptz | 만료 시각 (로그인 후 7일) |
+| `revoked_at` | timestamptz | 로그아웃·강제 로그아웃 시각 |
+| `user_agent` | text | 접속 브라우저 정보 |
+| ❗ `created_at` | timestamptz | 로그인 시각 |
+
+> **설계 의도**: 토큰 원문은 쿠키에만 있고 DB에는 지문만 있어, DB가 유출돼도 쿠키를 만들어낼 수 없다.
+> 로그아웃은 행을 지우지 않고 `revoked_at` 을 채워 접속 기록을 남긴다.
+
 ---
 
 ## 5. DB가 직접 막는 규칙 (제약 조건)
@@ -621,7 +635,7 @@ LP 연동 API는 이 표를 기준으로 데이터를 걸러서 내보낸다.
 | 🟢 본인 것만 공개 | `ledger_entries`, `capital_call_items`, `distribution_items`, `votes`, `notice_recipients`, `lp_proposals`(상태·금액만) | 자기 `lp_id` 에 해당하는 행만 |
 | 🔵 펀드 단위 공개 | `funds`, `fund_terms`, `capital_calls`, `distributions`, `general_meetings`, `agendas`, `reports`(`published`만), `notices`(`sent`만), `related_institutions` | 자기가 조합원인 펀드의 행 |
 | 🟡 요약만 공개 | `investments`, `valuations`, `exits`, `companies` | 정기 보고 스냅샷에 포함된 숫자로만 |
-| 🔴 비공개 | `deals`, `deal_stage_history`, `deal_notes`, `users`, `management_fee_charges`, `integration_events`, `idempotency_keys`, 모든 `memo` 컬럼 | 공개하지 않음 |
+| 🔴 비공개 | `deals`, `deal_stage_history`, `deal_notes`, `users`, `management_fee_charges`, `integration_events`, `idempotency_keys`, `sessions`, 모든 `memo` 컬럼 | 공개하지 않음 |
 
 > **설계 의도**: 공개 여부를 행마다 체크하는 대신 **테이블 단위 등급**으로 정했다.
 > 기준이 단순해서 실수로 새는 데이터가 생기기 어렵고, 면접에서 "LP에게 무엇을 보여주나?"에 표 하나로 답할 수 있다.
