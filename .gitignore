@@ -45,3 +45,6 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# 데모 계정 비밀번호 (scripts/seed-staff.mjs 가 생성)
+demo-accounts.md

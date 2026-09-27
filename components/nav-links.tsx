@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/funds", label: "조합", ready: true },
   { href: "/lps", label: "출자자", ready: true },
   { href: "/deals", label: "딜", ready: false },
+  { href: "/staff", label: "구성원", ready: true },
 ];
 
 export default function NavLinks() {

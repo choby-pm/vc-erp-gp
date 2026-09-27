@@ -45,6 +45,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     where s.token_hash = ${hashToken(token)}
       and s.revoked_at is null
       and s.expires_at > now()
+      and u.disabled_at is null  -- 계정이 중지되면 기존 세션도 즉시 무효
   `;
   return user ?? null;
 }

@@ -6,7 +6,7 @@ import { createSession } from "@/lib/auth/session";
 // POST /api/v1/auth/demo-login — 비밀번호 없이 데모 계정으로 로그인 (D28)
 export async function POST() {
   const [user] = await sql<{ id: string; email: string; name: string }[]>`
-    select id, email, name from users where email = ${DEMO_USER_EMAIL}
+    select id, email, name from users where email = ${DEMO_USER_EMAIL} and disabled_at is null
   `;
 
   if (!user) {

@@ -20,6 +20,15 @@ export const sql =
         parse: (value: string) => Number(value),
         serialize: (value: number) => value.toString(),
       },
+      // 날짜(date)는 "2026-09-28" 문자열 그대로 주고받는다.
+      // 자바스크립트 Date로 바꾸면 시간대(UTC↔한국) 차이로 하루가 밀리는 문제가 생긴다
+      date: {
+        to: 1082,
+        from: [1082],
+        parse: (value: string) => value,
+        serialize: (value: string | Date) =>
+          value instanceof Date ? value.toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }) : value,
+      },
     },
   });
 

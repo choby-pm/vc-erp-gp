@@ -176,6 +176,21 @@ Idempotency-Key: 7f3c9a2e-…
 | GET | `/companies/{company_id}` | 기업 상세 + 딜 이력 + 조합별 투자 현황 | |
 | PATCH | `/companies/{company_id}` | 기업 정보 수정 | |
 
+### 3-2b. 구성원 (D31)
+
+| 메서드 | 주소 | 설명 | 규칙 |
+|---|---|---|---|
+| GET | `/staff?status=active\|left\|all` | 구성원 목록 (기본: 재직 중) + 계정 상태 + 담당 조합 수 | |
+| POST | `/staff` | 구성원 등록. `create_account: true` 면 로그인 계정도 생성하고 임시 비밀번호를 **이 응답에서만** 돌려준다 | BR-STF-01, 03 |
+| GET | `/staff/{staff_id}` | 상세 + 로그인 계정 + 조합 운용 이력 | |
+| PATCH | `/staff/{staff_id}` | 인사 정보 수정 (계정 표시 이름 동기화) | BR-STF-01 |
+| POST 🔄 | `/staff/{staff_id}/leave` | 퇴사 처리 `{ "left_date": "2026-09-30" }` (계정 자동 중지) | BR-STF-02 |
+| POST | `/staff/{staff_id}/account` | 로그인 계정 생성 (임시 비밀번호 1회 표시) | BR-STF-03 |
+| POST 🔄 | `/staff/{staff_id}/account/reset-password` | 임시 비밀번호 재발급 (기존 로그인 끊김) | BR-STF-03 |
+| POST 🔄 | `/staff/{staff_id}/account/disable` · `/enable` | 계정 중지 · 다시 사용 | BR-STF-04, 05 |
+
+> 임시 비밀번호가 담긴 응답은 한 번만 내려가고, 이후 어떤 API로도 다시 조회할 수 없다.
+
 ### 3-3. 조합
 
 | 메서드 | 주소 | 설명 | 규칙 |

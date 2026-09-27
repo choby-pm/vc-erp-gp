@@ -46,3 +46,13 @@ export const LP_TYPE_LABEL: Record<LpType, string> = {
 
 // 기본 정보·규약 버전 1을 고칠 수 있는 상태 (BR-FUND-08, BR-TERM-01)
 export const EDITABLE_FUND_STATUSES: FundStatus[] = ["planning", "fundraising"];
+
+// 조합 운용 인력 역할 (D32)
+export const MANAGER_ROLES = ["lead", "key", "general"] as const;
+export type ManagerRole = (typeof MANAGER_ROLES)[number];
+
+export const MANAGER_ROLE_LABEL: Record<ManagerRole, string> = {
+  lead: "대표펀드매니저",
+  key: "핵심운용인력",
+  general: "운용인력",
+};

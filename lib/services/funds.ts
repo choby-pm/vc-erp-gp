@@ -31,14 +31,14 @@ export type FundTerms = {
   carry_rate: number;
   hurdle_rate: number;
   quorum_ratio: number;
-  effective_date: Date;
+  effective_date: string;
 };
 
 export type FundDetail = FundListItem & {
   term_years: number;
   investment_period_years: number;
-  formation_date: Date | null;
-  maturity_date: Date | null;
+  formation_date: string | null;
+  maturity_date: string | null;
   terms: FundTerms;
   minimum: FundMinimum;
   editable: boolean;
