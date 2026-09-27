@@ -1,6 +1,6 @@
 import type { FundType, GpType } from "@/lib/labels";
 
-// 펀드 유형 × 결성 주체별 최소 결성 기준 (D29, BR-FUND-09, BR-TERM-05)
+// 조합 유형 × 결성 주체별 최소 결성 기준 (D29, BR-FUND-09, BR-TERM-05)
 //
 // 법령이 바뀌면 이 표만 고친다. 화면(안내 문구)과 서버(검사)가 모두 이 표를 쓴다.
 // 출처: 사용자 제공 기준 (2026-09-27). ⚠️ 법령 원문 확인 필요 — docs/98_practice_check.md

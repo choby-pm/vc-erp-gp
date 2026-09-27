@@ -20,7 +20,7 @@
 
 | 종류 | 누가 호출 | 무엇을 | 인증 |
 |---|---|---|---|
-| ① GP 내부 API | GP 화면 | 펀드 운영의 모든 작업 | GP 사용자 로그인 세션 |
+| ① GP 내부 API | GP 화면 | 조합 운영의 모든 작업 | GP 사용자 로그인 세션 |
 | ② LP 연동 API | LP 시스템 | LP 공개 등급 데이터 조회, 통지 확인 | 시스템 간 API 키 |
 | ③ 웹훅 | GP 서버 → LP 시스템 | "데이터가 바뀌었다"는 알림 전송 | 서명(위조 방지 표시) |
 
@@ -45,15 +45,15 @@
 | 날짜 / 일시 | `YYYY-MM-DD` / ISO 8601 | `2026-09-27` / `2026-09-27T14:30:00+09:00` |
 | ID | UUID 문자열 | |
 
-> **금액이 JSON 숫자로 안전한가?** 자바스크립트는 약 9,007조까지 정수를 정확히 다룬다. 펀드 금액 범위에서는 문제없다.
+> **금액이 JSON 숫자로 안전한가?** 자바스크립트는 약 9,007조까지 정수를 정확히 다룬다. 조합 금액 범위에서는 문제없다.
 
 ### 2-2. HTTP 메서드의 쓰임
 
 | 메서드 | 쓰임 | 예시 |
 |---|---|---|
-| `GET` | 조회 (데이터를 바꾸지 않음) | 펀드 목록 조회 |
+| `GET` | 조회 (데이터를 바꾸지 않음) | 조합 목록 조회 |
 | `POST` | 생성, 또는 **상태를 바꾸는 동작** | 캐피탈콜 생성, 캐피탈콜 발송 |
-| `PATCH` | 일부 수정 (초안·기본 정보만) | 펀드 이름 수정 |
+| `PATCH` | 일부 수정 (초안·기본 정보만) | 조합 이름 수정 |
 | `PUT` | 통째로 교체 | 규약 버전 1 저장, 투표 기록 |
 | `DELETE` | 삭제 (초안만) | 캐피탈콜 초안 삭제 |
 
@@ -68,7 +68,7 @@
 
 **성공 (단건)**
 ```json
-{ "data": { "id": "…", "name": "그로스 1호 펀드" } }
+{ "data": { "id": "…", "name": "그로스 1호 조합" } }
 ```
 
 **성공 (목록)**
@@ -169,20 +169,20 @@ Idempotency-Key: 7f3c9a2e-…
 |---|---|---|---|
 | GET | `/lps` | 출자자 목록 (검색: `?q=`, `?lp_type=`) | |
 | POST | `/lps` | 출자자 등록 | |
-| GET | `/lps/{lp_id}` | 출자자 상세 + **전체 펀드 출자 현황** | |
+| GET | `/lps/{lp_id}` | 출자자 상세 + **전체 조합 출자 현황** | |
 | PATCH | `/lps/{lp_id}` | 출자자 정보 수정 | |
 | GET | `/companies` | 기업 목록 | |
 | POST | `/companies` | 기업 등록 | |
-| GET | `/companies/{company_id}` | 기업 상세 + 딜 이력 + 펀드별 투자 현황 | |
+| GET | `/companies/{company_id}` | 기업 상세 + 딜 이력 + 조합별 투자 현황 | |
 | PATCH | `/companies/{company_id}` | 기업 정보 수정 | |
 
-### 3-3. 펀드
+### 3-3. 조합
 
 | 메서드 | 주소 | 설명 | 규칙 |
 |---|---|---|---|
-| GET | `/funds` | 펀드 목록 + 요약 숫자 (`?status=`) | |
-| POST | `/funds` | 펀드 생성 (`planning`, 규약 버전 1 함께 생성) | |
-| GET | `/funds/{fund_id}` | 펀드 상세 + 대시보드 숫자 + 경고 | BR-FUND-07, BR-INV-06 |
+| GET | `/funds` | 조합 목록 + 요약 숫자 (`?status=`) | |
+| POST | `/funds` | 조합 생성 (`planning`, 규약 버전 1 함께 생성) | |
+| GET | `/funds/{fund_id}` | 조합 상세 + 대시보드 숫자 + 경고 | BR-FUND-07, BR-INV-06 |
 | PATCH | `/funds/{fund_id}` | 기본 정보 수정 (기획·모집 중만) | BR-FUND-08 |
 | GET 👁 | `/funds/{fund_id}/transition-check?to={status}` | 상태 이동 가능 여부 + 부족한 조건 목록 | BR-FUND-01~05 |
 | POST 🔄 | `/funds/{fund_id}/transitions` | 상태 이동 `{ "to_status": "formed" }` | BR-FUND-01~06 |
@@ -299,7 +299,7 @@ Idempotency-Key: 7f3c9a2e-…
 | GET | `/funds/{fund_id}/notices` | 통지 목록 + LP별 확인 현황 | |
 | POST | `/funds/{fund_id}/notices` | 일반 공지 초안 작성 | |
 | POST 🔄 | `/funds/{fund_id}/notices/{notice_id}/send` | 일반 공지 발송 | BR-NTC-01 |
-| GET | `/dashboard` | 전체 펀드 요약 + 모든 경고 모음 | |
+| GET | `/dashboard` | 전체 조합 요약 + 모든 경고 모음 | |
 | GET | `/integration-events` | 연동 이벤트 목록 (`?status=failed`) | |
 | POST | `/integration-events/{event_id}/retry` | 실패 이벤트 재전송 | BR-EVT-03 |
 
@@ -346,8 +346,8 @@ Idempotency-Key: 7f3c9a2e-…
 **오류**
 | 상황 | 응답 |
 |---|---|
-| 펀드가 `fundraising` 인데 최초 납입이 아님 | `409 FUND_STATUS_NOT_ALLOWED` |
-| 요청액 > 펀드 잔여 약정 | `422 CALL_EXCEEDS_UNFUNDED`, `details.fund_unfunded_amount` |
+| 조합이 `fundraising` 인데 최초 납입이 아님 | `409 FUND_STATUS_NOT_ALLOWED` |
+| 요청액 > 조합 잔여 약정 | `422 CALL_EXCEEDS_UNFUNDED`, `details.fund_unfunded_amount` |
 | 납입 기한 < 요청일 | `400 VALIDATION_ERROR` |
 
 **생성** `POST /api/v1/funds/{fund_id}/capital-calls` 는 같은 요청에 `purpose`, `is_initial` 을 더해 보내고,
@@ -364,7 +364,7 @@ Idempotency-Key: 2b1e…
 ```
 
 **서버 처리 순서** (하나의 트랜잭션)
-1. 펀드 행 잠금 (BR-COM-02)
+1. 조합 행 잠금 (BR-COM-02)
 2. 캐피탈콜이 `issued` 또는 `closed` 인지 확인
 3. 누적 납입액 + 이번 납입 ≤ 요청액 확인 (BR-CALL-09)
 4. 원장에 `contribution` 행 추가 (`source_type = 'capital_call_item'`)
@@ -403,8 +403,8 @@ Idempotency-Key: 9d4a…
 ```
 
 **서버 처리 순서** (하나의 트랜잭션)
-1. 펀드 행 잠금
-2. 펀드 `operating` 확인 → 아니면 `409 FUND_STATUS_NOT_ALLOWED`
+1. 조합 행 잠금
+2. 조합 `operating` 확인 → 아니면 `409 FUND_STATUS_NOT_ALLOWED`
 3. 신규: 투자 기간 안 + 딜 `approved` + 이 딜의 신규 투자 없음 / 후속: 보유 중인 기업
 4. 투자 가능 잔액 확인 → `422 EXCEEDS_INVESTABLE_AMOUNT`
 5. 현금 잔액 확인 → `422 INSUFFICIENT_CASH`
@@ -442,7 +442,7 @@ Idempotency-Key: 9d4a…
 }
 ```
 
-### 4-4. 펀드 상태 이동 점검 → 이동
+### 4-4. 조합 상태 이동 점검 → 이동
 
 **요청** `GET /api/v1/funds/{fund_id}/transition-check?to=formed`
 
@@ -527,7 +527,7 @@ Idempotency-Key: 9d4a…
   }
 }
 ```
-> `unlocks` 로 이 가결 덕분에 **이제 가능해진 작업**을 알려준다. 화면은 "이제 펀드를 결성할 수 있습니다" 버튼을 띄운다.
+> `unlocks` 로 이 가결 덕분에 **이제 가능해진 작업**을 알려준다. 화면은 "이제 조합을 결성할 수 있습니다" 버튼을 띄운다.
 
 ---
 
@@ -546,7 +546,7 @@ Authorization: Bearer {LP_SYSTEM_API_KEY}
 - **LP 사용자 로그인은 LP 시스템의 책임**이다. LP 시스템이 로그인한 사용자의 `lp_id` 를 주소에 넣어 호출한다.
 - **GP 서버의 검사**: 모든 응답을 LP 공개 등급(03 7장)으로 거른다.
   - 🟢 본인 것만: `lp_id` 가 일치하는 행만
-  - 🔵 펀드 단위: 그 LP가 조합원인 펀드만. 아니면 `403 FORBIDDEN`
+  - 🔵 조합 단위: 그 LP가 조합원인 조합만. 아니면 `403 FORBIDDEN`
   - 🟡 요약만: 정기 보고 스냅샷으로만
   - 🔴 비공개: 어떤 LP 연동 API도 반환하지 않는다
 - **필드 단위 차단**: 모든 `memo` 컬럼, `created_by` 는 응답에서 제외한다.
@@ -556,8 +556,8 @@ Authorization: Bearer {LP_SYSTEM_API_KEY}
 | 메서드 | 주소 (`/api/lp/v1` 생략) | 반환 | 등급 |
 |---|---|---|---|
 | GET | `/lps/{lp_id}` | LP 기본 정보 | 🟢 |
-| GET | `/lps/{lp_id}/funds` | 참여 펀드 목록 + 펀드별 내 약정·납입·분배 요약 | 🔵🟢 |
-| GET | `/lps/{lp_id}/funds/{fund_id}` | 펀드 정보 + 현재 규약 + 관계 기관 + 내 현황 | 🔵🟢 |
+| GET | `/lps/{lp_id}/funds` | 참여 조합 목록 + 조합별 내 약정·납입·분배 요약 | 🔵🟢 |
+| GET | `/lps/{lp_id}/funds/{fund_id}` | 조합 정보 + 현재 규약 + 관계 기관 + 내 현황 | 🔵🟢 |
 | GET | `/lps/{lp_id}/funds/{fund_id}/ledger` | 내 원장 (취소 행 포함 전체 이력) | 🟢 |
 | GET | `/lps/{lp_id}/funds/{fund_id}/capital-calls` | 발송된 캐피탈콜 + 내 요청액·납입 상태 | 🔵🟢 |
 | GET | `/lps/{lp_id}/funds/{fund_id}/distributions` | 확정된 분배 + 내 분배액(단계별) | 🔵🟢 |

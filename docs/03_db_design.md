@@ -39,14 +39,14 @@
 ### 원칙 4. 결정 시점의 값을 고정해서 저장한다 (스냅샷)
 지분율, 규약 조건은 시간이 지나며 바뀔 수 있다. 그래서 **결정이 내려진 시점의 값**을 함께 저장한다.
 - 총회 의결: 의결 당시의 의결권 비율을 `votes`에 저장
-- 정기 보고: 발송 당시의 펀드 숫자를 `reports.snapshot`에 저장
+- 정기 보고: 발송 당시의 조합 숫자를 `reports.snapshot`에 저장
 - 캐피탈콜·분배: 조합원별 금액을 계산 결과 그대로 저장
 
 > **왜?** 나중에 약정이 바뀌어도 "그때 왜 이 금액을 요청했는지"를 설명할 수 있어야 한다.
 
 ### 원칙 5. LP 시스템을 위해 준비한다 (D2)
 - 모든 기본 키는 **UUID**(무작위로 만든 고유 ID)를 쓴다. 두 시스템이 서로의 ID를 그대로 주고받을 수 있다
-- 출자자는 펀드와 독립된 `limited_partners`로 관리한다
+- 출자자는 조합과 독립된 `limited_partners`로 관리한다
 - GP → LP로 가는 모든 요청은 `notices`로, LP 시스템에 알려야 할 변경은 `integration_events`로 기록한다
 - 테이블마다 **LP 공개 등급**을 정한다 (7장)
 
@@ -107,7 +107,7 @@ erDiagram
 | 영역 | 테이블 | 단계 |
 |---|---|---|
 | 기준 정보 | `users`, `limited_partners`, `companies` | 공통 |
-| 펀드 | `funds`, `fund_terms`, `related_institutions` | 1. 기획, 3. 결성 |
+| 조합 | `funds`, `fund_terms`, `related_institutions` | 1. 기획, 3. 결성 |
 | 모집·조합원 | `lp_proposals`, `fund_members` | 2. 모집, 3. 결성 |
 | 돈의 원장 | `ledger_entries` | 전 단계 |
 | 출자 요청 | `capital_calls`, `capital_call_items` | 3. 결성, 4. 운용 |
@@ -168,7 +168,7 @@ erDiagram
 | `contact_name`, `contact_email`, `contact_phone` | text | 담당자 |
 | `memo` | text | GP 내부 메모 (LP 비공개) |
 
-> **설계 의도**: 출자자를 펀드에 종속시키지 않는다. 같은 LP가 1호 펀드, 2호 펀드에 모두 출자해도
+> **설계 의도**: 출자자를 조합에 종속시키지 않는다. 같은 LP가 1호 조합, 2호 조합에 모두 출자해도
 > 한 행으로 관리되고, "이 LP의 전체 출자 현황"을 볼 수 있다. LP 시스템 로그인 계정도 이 ID에 연결된다.
 
 #### `companies` — 기업 기준 정보
@@ -182,12 +182,12 @@ erDiagram
 | `founded_date` | date | 설립일 (초기 기업 여부 판단에 사용) |
 
 > **설계 의도**: 검토 중인 기업과 투자한 기업을 한 테이블에 둔다.
-> 딜이 드롭됐다가 1년 뒤 다시 검토되거나, 두 펀드가 같은 기업에 투자해도 기업 정보는 하나로 유지된다.
+> 딜이 드롭됐다가 1년 뒤 다시 검토되거나, 두 조합이 같은 기업에 투자해도 기업 정보는 하나로 유지된다.
 > "포트폴리오사"는 별도 테이블이 아니라 **투자가 1건 이상 있는 기업**을 보여주는 뷰로 만든다.
 
-### 4-2. 펀드
+### 4-2. 조합
 
-#### `funds` — 펀드
+#### `funds` — 조합
 | 컬럼 | 자료형 | 설명 |
 |---|---|---|
 | 🔑 `id` | uuid | |
@@ -205,7 +205,7 @@ erDiagram
 | `liquidation_date` | date | 청산 완료일 |
 
 > **설계 의도**: 약정 총액, 만기일처럼 **다른 값으로 계산되는 값은 저장하지 않는다** (뷰에서 계산).
-> 단계별 날짜를 컬럼으로 두어 펀드가 언제 어느 단계를 지났는지 한눈에 보이게 한다.
+> 단계별 날짜를 컬럼으로 두어 조합이 언제 어느 단계를 지났는지 한눈에 보이게 한다.
 
 #### `fund_terms` — 규약 핵심 조건 (버전 관리)
 | 컬럼 | 자료형 | 설명 |
@@ -245,7 +245,7 @@ erDiagram
 |---|---|---|
 | 🔑 `id` | uuid | |
 | ❗🔗 `fund_id` | uuid → funds | |
-| ❗🔗 `lp_id` | uuid → limited_partners | `(fund_id, lp_id)` ✨ 한 펀드에 한 LP는 제안 1건 |
+| ❗🔗 `lp_id` | uuid → limited_partners | `(fund_id, lp_id)` ✨ 한 조합에 한 LP는 제안 1건 |
 | ❗ `status` | text | `proposed` / `reviewing` / `committed` / `declined` |
 | `proposed_amount` | bigint | GP가 제안한 출자 금액 |
 | `loc_amount` | bigint | LP가 확약한 금액. `committed` 일 때 필수 |
@@ -267,9 +267,9 @@ erDiagram
 | 🔗 `proposal_id` | uuid → lp_proposals | 어떤 제안에서 조합원이 됐는지 |
 | ❗ `joined_date` | date | |
 
-> **설계 의도**: GP도 자기 펀드에 출자하는 조합원이므로 LP와 같은 테이블에 둔다.
+> **설계 의도**: GP도 자기 조합에 출자하는 조합원이므로 LP와 같은 테이블에 둔다.
 > 그래야 캐피탈콜·의결·분배를 계산할 때 GP를 빠뜨리지 않는다.
-> 펀드당 GP 조합원은 1명만 허용한다 (부분 유일 제약).
+> 조합당 GP 조합원은 1명만 허용한다 (부분 유일 제약).
 > **약정액 컬럼이 없는 이유**: 약정액은 원장에만 있다 (원칙 1).
 
 ### 4-4. 돈의 원장
@@ -299,12 +299,12 @@ erDiagram
 
 ### 4-5. 출자 요청 (캐피탈콜)
 
-#### `capital_calls` — 출자 요청 (펀드 단위)
+#### `capital_calls` — 출자 요청 (조합 단위)
 | 컬럼 | 자료형 | 설명 |
 |---|---|---|
 | 🔑 `id` | uuid | |
 | ❗🔗 `fund_id` | uuid → funds | |
-| ❗ `call_no` | integer | 펀드 내 회차 (1, 2, 3…). `(fund_id, call_no)` ✨ |
+| ❗ `call_no` | integer | 조합 내 회차 (1, 2, 3…). `(fund_id, call_no)` ✨ |
 | ❗ `is_initial` | boolean | 결성 시 최초 납입 여부 |
 | ❗ `total_call_amount` | bigint | 전체 요청액 |
 | ❗ `call_date` | date | 요청일 |
@@ -332,7 +332,7 @@ erDiagram
 |---|---|---|
 | 🔑 `id` | uuid | |
 | ❗🔗 `company_id` | uuid → companies | |
-| 🔗 `target_fund_id` | uuid → funds | 투자 예정 펀드 (검토 중에는 비워도 됨) |
+| 🔗 `target_fund_id` | uuid → funds | 투자 예정 조합 (검토 중에는 비워도 됨) |
 | ❗ `stage` | text | `sourcing` / `reviewing` / `ic` / `approved` / `dropped` |
 | `expected_amount` | bigint | 예상 투자 금액 |
 | ❗🔗 `owner_id` | uuid → users | 담당 심사역 |
@@ -375,7 +375,7 @@ erDiagram
 | ❗ `is_primary_purpose` | boolean | 주목적 분야 해당 여부 |
 
 > **설계 의도**: 투자 1건 = 1행. 같은 기업에 후속 투자하면 행이 추가된다.
-> 펀드의 투자 가능 잔액은 저장하지 않고 뷰에서 계산하며, 잔액 초과 검증은 04에서 다룬다.
+> 조합의 투자 가능 잔액은 저장하지 않고 뷰에서 계산하며, 잔액 초과 검증은 04에서 다룬다.
 
 #### `valuations` — 기업가치 평가
 | 컬럼 | 자료형 | 설명 |
@@ -384,10 +384,10 @@ erDiagram
 | ❗🔗 `fund_id` | uuid → funds | |
 | ❗🔗 `company_id` | uuid → companies | |
 | ❗ `valuation_date` | date | `(fund_id, company_id, valuation_date)` ✨ |
-| ❗ `fair_value_amount` | bigint | 펀드가 보유한 지분의 평가액 |
+| ❗ `fair_value_amount` | bigint | 조합이 보유한 지분의 평가액 |
 | `method` | text | 평가 방법 메모 ⚠️ |
 
-> **설계 의도**: 평가는 투자 건이 아니라 **펀드가 보유한 기업 지분 전체** 단위로 한다.
+> **설계 의도**: 평가는 투자 건이 아니라 **조합이 보유한 기업 지분 전체** 단위로 한다.
 > 가장 최근 평가액을 정기 보고와 대시보드에 쓴다.
 
 ### 4-7. 보수
@@ -406,7 +406,7 @@ erDiagram
 
 > **설계 의도**: 계산 결과만이 아니라 **계산에 쓴 재료(기준 금액, 요율, 기간)를 함께 저장**한다.
 > LP나 감사인이 "이 보수가 왜 이 금액인가"를 물으면 행 하나로 답할 수 있다.
-> 관리보수는 펀드 → GP로 나가는 돈이라 조합원 원장이 아니라 이 테이블에 둔다.
+> 관리보수는 조합 → GP로 나가는 돈이라 조합원 원장이 아니라 이 테이블에 둔다.
 
 ### 4-8. 총회·보고
 
@@ -442,7 +442,7 @@ erDiagram
 | ❗ `voting_power_ratio` | numeric | 의결 당시 의결권 비율 (스냅샷) |
 
 > **설계 의도**: 결성총회도 `general_meetings` 한 종류로 다룬다.
-> 결성·규약 변경·해산처럼 펀드 상태를 바꾸는 결정은 모두 **가결된 안건**을 근거로 남긴다.
+> 결성·규약 변경·해산처럼 조합 상태를 바꾸는 결정은 모두 **가결된 안건**을 근거로 남긴다.
 
 #### `reports` — 정기 보고
 | 컬럼 | 자료형 | 설명 |
@@ -451,7 +451,7 @@ erDiagram
 | ❗🔗 `fund_id` | uuid → funds | |
 | ❗ `period_type` | text | `quarterly` / `semiannual` / `annual` |
 | ❗ `period_start`, `period_end` | date | |
-| `snapshot` | jsonb | 발행 시점 펀드 숫자 묶음 (약정·납입·투자·평가·분배). 초안은 비움, 발행 시 필수 |
+| `snapshot` | jsonb | 발행 시점 조합 숫자 묶음 (약정·납입·투자·평가·분배). 초안은 비움, 발행 시 필수 |
 | `gp_comment` | text | GP 코멘트 |
 | ❗ `status` | text | `draft` / `published` |
 
@@ -474,7 +474,7 @@ erDiagram
 > **설계 의도**: 한 기업을 여러 번에 나눠 회수할 수 있어서, 회수마다 **그만큼의 원금**을 함께 기록한다.
 > 회수 배수(MOIC) = `proceeds_amount ÷ cost_basis_amount` 로 계산한다.
 
-#### `distributions` — 분배 (펀드 단위)
+#### `distributions` — 분배 (조합 단위)
 | 컬럼 | 자료형 | 설명 |
 |---|---|---|
 | 🔑 `id` | uuid | |
@@ -586,8 +586,8 @@ erDiagram
 | 투자 기간 ≤ 존속 기간 | `check` |
 | 납입 기한 ≥ 요청일 | `check` |
 | LP 조합원은 `lp_id` 필수, GP 조합원은 비움 | `check` |
-| 펀드당 GP 조합원 1명 | 부분 유일 인덱스 |
-| 같은 펀드에 같은 LP 중복 참여 불가 | `unique` |
+| 조합당 GP 조합원 1명 | 부분 유일 인덱스 |
+| 같은 조합에 같은 LP 중복 참여 불가 | `unique` |
 | 원장 행 수정·삭제 불가 | DB 권한 + 트리거 |
 | 존재하지 않는 대상을 가리킬 수 없음 | 외래 키 |
 
@@ -603,7 +603,7 @@ erDiagram
 ### `v_member_balances` — 조합원별 현황
 조합원 1명당 1행:
 - 약정액 = 원장 `commitment` 합계
-- 지분율 = 약정액 ÷ 펀드 약정 총액
+- 지분율 = 약정액 ÷ 조합 약정 총액
 - 누적 요청액 = `capital_call_items.call_amount` 합계 (`issued`, `closed` 요청만)
 - 누적 납입액 = 원장 `contribution` 합계
 - 잔여 약정액 = 약정액 − 누적 요청액
@@ -614,8 +614,8 @@ erDiagram
 - 납입액 = 해당 요청 항목을 원인으로 한 원장 `contribution` 합계
 - 상태 = 납입액 0 → `pending` (기한 지나면 `overdue`) / 일부 → `partial` / 전액 → `paid`
 
-### `v_fund_summary` — 펀드 대시보드
-펀드 1개당 1행:
+### `v_fund_summary` — 조합 대시보드
+조합 1개당 1행:
 - 약정 총액, 누적 납입액, 누적 투자액, 누적 관리보수, 누적 회수액, 누적 분배액
 - 투자 가능 잔액 = 약정 총액 − 누적 투자액 − 누적 관리보수 ⚠️
 - 현금 잔액 = 누적 납입액 + 누적 회수액 − 누적 투자액 − 누적 관리보수 − 누적 분배액
@@ -623,7 +623,7 @@ erDiagram
 - 최근 평가액 합계, 만기일
 
 ### `v_portfolio` — 포트폴리오
-펀드 × 기업당 1행 (투자가 1건 이상인 경우만):
+조합 × 기업당 1행 (투자가 1건 이상인 경우만):
 - 누적 투자액, 투자 횟수, 최근 평가액, 누적 회수액, 회수 배수, 보유 상태(보유 중 / 일부 회수 / 전액 회수)
 
 ---
@@ -635,7 +635,7 @@ LP 연동 API는 이 표를 기준으로 데이터를 걸러서 내보낸다.
 | 등급 | 테이블 | LP가 보는 범위 |
 |---|---|---|
 | 🟢 본인 것만 공개 | `ledger_entries`, `capital_call_items`, `distribution_items`, `votes`, `notice_recipients`, `lp_proposals`(상태·금액만) | 자기 `lp_id` 에 해당하는 행만 |
-| 🔵 펀드 단위 공개 | `funds`, `fund_terms`, `capital_calls`, `distributions`, `general_meetings`, `agendas`, `reports`(`published`만), `notices`(`sent`만), `related_institutions` | 자기가 조합원인 펀드의 행 |
+| 🔵 조합 단위 공개 | `funds`, `fund_terms`, `capital_calls`, `distributions`, `general_meetings`, `agendas`, `reports`(`published`만), `notices`(`sent`만), `related_institutions` | 자기가 조합원인 조합의 행 |
 | 🟡 요약만 공개 | `investments`, `valuations`, `exits`, `companies` | 정기 보고 스냅샷에 포함된 숫자로만 |
 | 🔴 비공개 | `deals`, `deal_stage_history`, `deal_notes`, `users`, `management_fee_charges`, `integration_events`, `idempotency_keys`, `sessions`, 모든 `memo` 컬럼 | 공개하지 않음 |
 

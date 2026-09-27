@@ -12,10 +12,10 @@ export class AppError extends Error {
   }
 }
 
-// what 에는 조사까지 넣는다. 예: notFound("펀드를")
+// what 에는 조사까지 넣는다. 예: notFound("조합을")
 export const notFound = (what: string) => new AppError(404, "NOT_FOUND", `${what} 찾을 수 없습니다`);
 
-export const statusNotAllowed = (rule: string, message = "현재 펀드 상태에서는 할 수 없는 작업입니다") =>
+export const statusNotAllowed = (rule: string, message = "현재 조합 상태에서는 할 수 없는 작업입니다") =>
   new AppError(409, "FUND_STATUS_NOT_ALLOWED", message, rule);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

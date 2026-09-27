@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "VC ERP · GP",
-  description: "VC 운용사(GP)의 펀드 기획부터 청산까지 다루는 ERP",
+  description: "VC 운용사(GP)의 조합 기획부터 청산까지 다루는 ERP",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

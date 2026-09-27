@@ -17,7 +17,7 @@ export function FundStatusBadge({ status }: { status: FundStatus }) {
   );
 }
 
-// 펀드 생애주기 6단계 중 현재 위치 (01 MVP 범위)
+// 조합 생애주기 6단계 중 현재 위치 (01 MVP 범위)
 export function FundLifecycle({ status }: { status: FundStatus }) {
   const current = FUND_STATUSES.indexOf(status);
   return (
