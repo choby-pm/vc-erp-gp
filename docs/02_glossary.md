@@ -186,6 +186,32 @@ planning(기획) → fundraising(모집 중) → formed(결성 완료) → opera
 | 통지 구분 | | `notice_type` | `proposal`(출자 제안) / `capital_call`(출자 요청) / `report`(정기 보고) / `meeting`(총회 소집) / `distribution`(분배) / `general`(일반 공지) |
 | 발송 상태 | | `notice_status` | `draft`(작성) → `sent`(발송) → `acknowledged`(LP 확인) |
 
+## 8-2. 회계 용어 (D34)
+
+화면의 재무 숫자는 아래 회계 용어로 표시한다. 약식 재무제표 기준이며, 정식 계정과목은 회계 모듈에서 확정한다.
+
+| 용어 | 영어 | 이 시스템에서 | 설명 |
+|---|---|---|---|
+| 재무상태표 | Balance Sheet | 재무 탭 | 기준일 현재 자산 = 부채 + 자본 |
+| 손익계산서 | Income Statement | 재무 탭 | 기간(결성일 ~ 기준일 누적)의 수익 − 비용 = 순이익 |
+| 자산 | Assets | 현금및현금성자산 + 투자자산 | 조합이 가진 재산 |
+| 현금및현금성자산 | Cash and cash equivalents | `v_fund_summary.cash_amount` | 납입 + 처분대가 − 투자 − 관리보수 − 기타 비용 − 분배 |
+| 투자자산 | Investments | `v_portfolio.remaining_cost_amount` 합계 | 포트폴리오 기업 지분·채권. 재무상태표에는 취득원가로 적는다 |
+| 취득원가 | Cost | `investments.investment_amount` | 투자할 때 지급한 금액 |
+| 장부가액 | Carrying amount | 취득원가 − 처분 원가 | 재무상태표에 남아 있는 투자자산 금액 (원가 기준) |
+| 공정가치 | Fair value | 최신 평가액 | 기준일에 평가한 투자자산 가치. 평가가 없으면 장부가액 |
+| 부채 | Liabilities | 0 (미기록) | 갚아야 할 의무. 미지급 관리보수·비용 등은 회계 모듈에서 기록 |
+| 자본 | Equity | 조합원 지분 | 출자금 − 분배금 + 이익잉여금 |
+| 출자금 | Paid-in capital | 납입 원장 합계 | 조합원이 실제로 납입한 금액 (약정이 아니라 납입분) |
+| 분배금 | Distributions | 분배 원장 합계 | 조합원에게 돌려준 돈. 자본에서 뺀다 |
+| 이익잉여금 / 결손금 | Retained earnings / Deficit | 누적 순이익 | 수익 − 비용의 누적. 음수면 결손금 |
+| 투자자산처분손익 | Gain (loss) on disposal | 처분대가 − 처분 원가 | 투자 회수로 실현된 이익·손실 |
+| 처분대가 | Proceeds | `exits.proceeds_amount` | 투자자산을 팔거나 상환받아 받은 돈 |
+| 미실현 평가손익 | Unrealized gain (loss) | 공정가치 − 장부가액 | 아직 팔지 않은 투자자산의 평가 차이 |
+| 순자산가치 | NAV | 자본총계 + 미실현 평가손익 | 공정가치 기준 조합 순자산 |
+| 현금출납장 | Cash book | 재무 탭 | 현금및현금성자산의 입금·출금 내역과 잔액 |
+| 입금 / 출금 | Receipt / Payment | 현금출납장 | 출자금 수입·투자자산 처분 / 투자자산 취득·관리보수·비용·분배금 지급 |
+
 ## 9. 시스템 공통
 
 | 표준어 | 다른 표현 | 코드 이름 | 정의 |

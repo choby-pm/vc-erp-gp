@@ -3,6 +3,8 @@ import { AppError, assertUuid, notFound, statusNotAllowed } from "@/lib/api/erro
 import { formatDate, formatKRWFull, formatPercent } from "@/lib/format";
 import type { FundStatus, SecurityType } from "@/lib/labels";
 import type { InvestmentInput } from "@/lib/schemas/investment";
+import { journalForInvestment } from "@/lib/services/accounting";
+import { assertCashAvailable } from "@/lib/services/finance";
 
 // 투자 집행 서비스 (BR-INV-01~06, D14)
 // · 신규 투자: 운용 중 + 투자 기간 안 + 이 조합으로 투자 확정된 딜 + 딜당 신규 투자 1건
@@ -171,13 +173,8 @@ export async function executeInvestment(fundId: string, input: InvestmentInput, 
         investable_amount: before.investable_amount,
       });
     }
-    if (input.investment_amount > before.cash_amount) {
-      throw fail(422, "INSUFFICIENT_CASH", `현금 잔액(${formatKRWFull(before.cash_amount)})이 부족합니다. 캐피탈콜로 먼저 자금을 확보하세요`, "BR-INV-04", "investment_amount", {
-        requested_amount: input.investment_amount,
-        cash_amount: before.cash_amount,
-        shortfall_amount: input.investment_amount - before.cash_amount,
-      });
-    }
+    // BR-INV-04 + BR-FIN-02: 투자일 기준 현금 (그 뒤 어느 날의 잔액도 음수가 되면 안 된다)
+    await assertCashAvailable(t, fundId, input.investment_date, input.investment_amount, "BR-INV-04", "investment_amount");
 
     const [created] = await tx<{ id: string }[]>`
       insert into investments (fund_id, company_id, deal_id, investment_date, investment_amount, security_type, shares, price_per_share, is_follow_on, is_primary_purpose, created_by)
@@ -185,6 +182,17 @@ export async function executeInvestment(fundId: string, input: InvestmentInput, 
               ${input.price_per_share}, ${input.is_follow_on}, ${input.is_primary_purpose}, ${userId})
       returning id
     `;
+    // 회계 (D35): 투자자산 / 현금
+    const [company] = await tx<{ name: string }[]>`select name from companies where id = ${companyId}`;
+    await journalForInvestment(t, {
+      fund_id: fundId,
+      investment_id: created.id,
+      amount: input.investment_amount,
+      date: input.investment_date,
+      company_name: company.name,
+      follow_on: input.is_follow_on,
+      created_by: userId,
+    });
     // BR-INV-06: 투자 후 숫자와 주목적 비율 경고를 돌려준다 (05 API 설계 4-3)
     return { investment_id: created.id, fund_after: await getInvestmentSummary(fundId, t) };
   });

@@ -21,6 +21,16 @@ const ACTION: Record<string, { label: string; confirm: string; note: string }> =
     confirm: "운용을 시작할까요? 등록 정보는 더 이상 바꿀 수 없습니다.",
     note: "등록이 끝나면 운용을 시작해 투자를 집행할 수 있습니다.",
   },
+  dissolved: {
+    label: "해산 처리",
+    confirm: "조합을 해산할까요? 해산일은 해산총회일로 기록되고, 이후에는 신규·후속 투자와 캐피탈콜을 할 수 없습니다. 남은 기업을 회수하고 최종 분배로 정리합니다.",
+    note: "해산총회에서 해산 안건이 가결되면 해산할 수 있습니다. 운용 중에는 이 단계를 준비할 필요가 없습니다.",
+  },
+  liquidated: {
+    label: "청산 완료",
+    confirm: "청산을 완료할까요? 청산일은 최종 분배일로 기록되고, 이후에는 조회만 할 수 있습니다.",
+    note: "보유 기업을 모두 회수하고 최종 분배를 지급해 현금이 0이 되면 청산을 완료합니다.",
+  },
 };
 
 export default function FundNextStep({ fundId, check }: { fundId: string; check: TransitionCheck }) {

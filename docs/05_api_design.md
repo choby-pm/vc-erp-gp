@@ -270,13 +270,23 @@ Idempotency-Key: 7f3c9a2e-…
 | POST 💰 | `/funds/{fund_id}/investments` | 투자 집행 (신규·후속, `Idempotency-Key` 필수). 응답에 `fund_after`(투자 후 잔액·경고) | BR-INV-01~07 |
 | GET | `/funds/{fund_id}/portfolio` | 포트폴리오 (기업별 투자·평가·회수·상태) + 합계·총 가치 배수 + 평가 이력 | BR-VAL-03 |
 | GET / POST | `/funds/{fund_id}/valuations` | 평가 목록 / 기록 `{ "company_id", "valuation_date", "fair_value_amount", "method"? }` | BR-VAL-01~04 |
-| GET | `/funds/{fund_id}/exits` | 회수 목록 | |
-| POST 💰 | `/funds/{fund_id}/exits` | 회수 기록 | BR-EXIT-01~06 |
+| GET | `/funds/{fund_id}/exits` | 회수 목록 + 합계(처분대가·원가·손익·배수) + 회수할 수 있는 보유 기업 | |
+| POST 💰 | `/funds/{fund_id}/exits` | 회수 기록 `{ "company_id", "exit_type", "exit_date", "proceeds_amount", "full_exit", "cost_basis_amount"?, "memo"? }` (`Idempotency-Key` 필수, 처분 분개) | BR-EXIT-01~07 |
 
 ### 3-9. 관리보수
 
 | 메서드 | 주소 | 설명 | 규칙 |
 |---|---|---|---|
+| GET | `/funds/{fund_id}/finance?from=&to=&kind=` | 재무 요약 + 현금 흐름 장부 (누적 잔액, 들어옴·나감 합계) | BR-FIN-01 |
+| GET | `/accounting/accounts` | 계정과목표 (모든 조합 공통) | D35 |
+| GET / POST 💰 | `/funds/{fund_id}/accounting/journal` | 분개장 (`?from=&to=`) / 수동 분개 `{ "entry_date", "description", "lines": [{ "account", "debit", "credit" }] }` | BR-ACC-01, 04 |
+| POST | `/funds/{fund_id}/accounting/journal/{entry_id}/reverse` | 수동 분개 역분개 `{ "reason" }` | BR-ACC-02, 04 |
+| GET | `/funds/{fund_id}/accounting/trial-balance?as_of=` | 시산표 | |
+| GET | `/funds/{fund_id}/accounting/statements?from=&to=` | 재무상태표(to 기준) + 손익계산서(from~to) | BR-ACC-05 |
+| GET | `/funds/{fund_id}/accounting/ledger/{account_code}?from=&to=` | 계정별 원장 (기초·누적 잔액) | |
+| GET / POST | `/funds/{fund_id}/accounting/closings` | 결산 이력 / 사업연도 결산 `{ "fiscal_year" }` | BR-ACC-03 |
+| GET / POST 💰 | `/funds/{fund_id}/expenses` | 기타 비용 목록 / 기록 `{ "expense_type", "description", "payee"?, "amount", "paid_date" }` | BR-EXP-01 |
+| POST | `/funds/{fund_id}/expenses/{expense_id}/cancel` | 기타 비용 취소 `{ "reason" }` | BR-EXP-02 |
 | GET | `/funds/{fund_id}/management-fees` | 청구 이력 | |
 | POST 👁 | `/funds/{fund_id}/management-fees/preview` | `{ "year", "quarter" }` → 구간 분할·기준 금액·요율·일수·보수 + 현금 충분 여부 | BR-FEE-01~08 |
 | POST 💰 | `/funds/{fund_id}/management-fees` | 청구 저장 `{ "year", "quarter", "charged_date" }` (미리보기와 같은 계산, `Idempotency-Key` 필수) | BR-FEE-01~08 |
@@ -307,11 +317,11 @@ Idempotency-Key: 7f3c9a2e-…
 | 메서드 | 주소 | 설명 | 규칙 |
 |---|---|---|---|
 | GET | `/funds/{fund_id}/distributions` | 분배 이력 | |
-| POST 👁 | `/funds/{fund_id}/distributions/preview` | 워터폴 계산 미리보기 | BR-DIST-01~04 |
-| POST | `/funds/{fund_id}/distributions` | 초안 생성 (계산 결과 저장) | BR-DIST-01~04 |
+| POST 👁 | `/funds/{fund_id}/distributions/preview` | 워터폴 계산 미리보기 `{ "distribution_date", "distributable_amount", "is_final", "memo"? }` | BR-DIST-01~04, 09 |
+| POST | `/funds/{fund_id}/distributions` | 초안 생성 (계산 결과 저장, 진행 중 분배 1건) | BR-DIST-01~04, 08 |
 | GET / DELETE | `/funds/{fund_id}/distributions/{id}` | 상세 / 초안 삭제 | |
-| POST 🔄💰 | `/funds/{fund_id}/distributions/{id}/confirm` | 확정 (잠금 + 통지) | BR-DIST-05 |
-| POST 🔄💰 | `/funds/{fund_id}/distributions/{id}/pay` | 지급 (원장 기록) | BR-DIST-06 |
+| POST 🔄💰 | `/funds/{fund_id}/distributions/{id}/confirm` | 확정 (재계산 검사 + 잠금 + LP별 통지) | BR-DIST-05, 10 |
+| POST 🔄💰 | `/funds/{fund_id}/distributions/{id}/pay` | 지급 (조합원 원장 + 분개, 분배일 이후) | BR-DIST-06, 11 |
 
 ### 3-13. 통지·대시보드·연동 관리
 

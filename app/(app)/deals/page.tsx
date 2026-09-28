@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DealSectionHeader from "@/components/deal-section-header";
 import DealBoard from "@/components/deal-board";
 import { dealStats, listDeals, listFundOptions, listOwnerOptions } from "@/lib/services/deals";
 
@@ -28,15 +29,15 @@ export default async function DealsPage(props: PageProps<"/deals">) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">딜 파이프라인</h1>
-          <p className="mt-1 text-sm text-slate-500">발굴 → 검토 → 투심위 → 투자 확정. 어느 단계에서든 드롭할 수 있고, 투심위에서 검토로 되돌릴 수 있습니다.</p>
-        </div>
-        <Link href="/deals/new" className="shrink-0 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
-          + 딜 등록
-        </Link>
-      </div>
+      <DealSectionHeader
+        active="deals"
+        description="발굴 → 검토 → 투심위 → 투자 확정. 어느 단계에서든 드롭할 수 있고, 투심위에서 검토로 되돌릴 수 있습니다."
+        action={
+          <Link href="/deals/new" className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+            + 딜 등록
+          </Link>
+        }
+      />
 
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">

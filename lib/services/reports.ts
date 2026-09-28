@@ -10,7 +10,7 @@ import { recordEvent } from "@/lib/services/events";
 // · 발행본은 고치지 않는다. 틀리면 같은 기간의 정정 보고서를 새로 발행한다
 // · 투자·평가·관리보수 원본은 LP에게 공개하지 않고(🟡·🔴), 이 스냅샷의 요약 숫자로만 공개한다
 
-export type PeriodType = "quarterly" | "semiannual" | "annual";
+export type PeriodType = "monthly" | "quarterly" | "semiannual" | "annual";
 
 export type ReportSnapshot = {
   as_of: string; // 기준일 = 보고 기간 종료일
@@ -25,11 +25,12 @@ export type ReportSnapshot = {
     proceeds_amount: number; // 누적 회수
     distributed_amount: number; // 누적 분배
     fee_amount: number; // 누적 관리보수
+    expense_amount?: number; // 누적 기타 비용 (D34 이후 발행분부터)
     cash_amount: number; // 현금 잔액
     primary_purpose_ratio: number; // 주목적 투자 비율
     tvpi: number | null; // 총 가치 배수 (LP 관점) = (분배 + 잔여 가치) ÷ 납입. 잔여 가치 = 평가액 + 현금
   };
-  period_flows: { paid_amount: number; invested_amount: number; proceeds_amount: number; distributed_amount: number; fee_amount: number };
+  period_flows: { paid_amount: number; invested_amount: number; proceeds_amount: number; distributed_amount: number; fee_amount: number; expense_amount?: number };
   portfolio: { company_name: string; invested_amount: number; current_value_amount: number; status: "holding" | "partially_exited" | "exited" }[];
 };
 
@@ -54,18 +55,19 @@ export type ReportDetail = ReportListItem & {
 const REPORT_STATUSES: FundStatus[] = ["formed", "operating", "dissolved"]; // BR-RPT-01
 const today = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
 
-// 보고서 이름: "2026년 3분기 보고", "2026년 상반기 보고", "2026년 연간 보고"
+// 보고서 이름: "2026년 9월 보고", "2026년 3분기 보고", "2026년 상반기 보고", "2026년 연간 보고"
 export function periodLabel(type: PeriodType, start: string) {
   const year = start.slice(0, 4);
   const month = Number(start.slice(5, 7));
+  if (type === "monthly") return `${year}년 ${month}월 보고`;
   if (type === "quarterly") return `${year}년 ${Math.floor((month - 1) / 3) + 1}분기 보고`;
   if (type === "semiannual") return `${year}년 ${month <= 6 ? "상반기" : "하반기"} 보고`;
   return `${year}년 연간 보고`;
 }
 
-// 기간 계산: { 분기·반기·연간, 연도, 순번 } → 시작·종료일
+// 기간 계산: { 월간·분기·반기·연간, 연도, 순번 } → 시작·종료일
 export function periodRange(type: PeriodType, year: number, no: number) {
-  const months = type === "quarterly" ? 3 : type === "semiannual" ? 6 : 12;
+  const months = type === "monthly" ? 1 : type === "quarterly" ? 3 : type === "semiannual" ? 6 : 12;
   const startMonth = (no - 1) * months + 1;
   const start = `${year}-${String(startMonth).padStart(2, "0")}-01`;
   const endMonthNext = startMonth + months;
@@ -89,6 +91,12 @@ export async function computeSnapshot(tx: typeof sql, fundId: string, start: str
     select coalesce(sum(fee_amount), 0)::bigint as total,
            coalesce(sum(fee_amount) filter (where charged_date >= ${start}), 0)::bigint as period
     from management_fee_charges where fund_id = ${fundId} and charged_date <= ${asOf}
+  `;
+  // 기타 비용 (D34): 지급일 기준, 취소된 비용 제외
+  const [expense] = await tx<{ total: number; period: number }[]>`
+    select coalesce(sum(amount), 0)::bigint as total,
+           coalesce(sum(amount) filter (where paid_date >= ${start}), 0)::bigint as period
+    from fund_expenses where fund_id = ${fundId} and paid_date <= ${asOf} and cancelled_at is null
   `;
   // 기업별: 기준일까지의 투자·회수, 기준일 이전 최신 평가 (v_portfolio 와 같은 규칙을 기준일로 다시 계산, BR-VAL-03)
   const companies = await tx<{ company_name: string; invested: number; primary_invested: number; period_invested: number; proceeds: number; period_proceeds: number; exited_cost: number; latest_value: number | null }[]>`
@@ -129,7 +137,7 @@ export async function computeSnapshot(tx: typeof sql, fundId: string, start: str
   const invested = sum("invested");
   const proceeds = sum("proceeds");
   const currentValue = portfolio.reduce((s, p) => s + p.current_value_amount, 0);
-  const cash = led.paid + proceeds - invested - fee.total - led.distributed;
+  const cash = led.paid + proceeds - invested - fee.total - expense.total - led.distributed;
 
   return {
     as_of: asOf,
@@ -144,11 +152,12 @@ export async function computeSnapshot(tx: typeof sql, fundId: string, start: str
       proceeds_amount: proceeds,
       distributed_amount: led.distributed,
       fee_amount: fee.total,
+      expense_amount: expense.total,
       cash_amount: cash,
       primary_purpose_ratio: led.commitment > 0 ? sum("primary_invested") / led.commitment : 0,
       tvpi: led.paid > 0 ? (led.distributed + currentValue + cash) / led.paid : null,
     },
-    period_flows: { paid_amount: led.period_paid, invested_amount: sum("period_invested"), proceeds_amount: sum("period_proceeds"), distributed_amount: led.period_distributed, fee_amount: fee.period },
+    period_flows: { paid_amount: led.period_paid, invested_amount: sum("period_invested"), proceeds_amount: sum("period_proceeds"), distributed_amount: led.period_distributed, fee_amount: fee.period, expense_amount: expense.period },
     portfolio,
   };
 }
@@ -209,7 +218,7 @@ async function lockFund(tx: typeof sql, fundId: string) {
 export async function createReport(fundId: string, input: { period_type: PeriodType; year: number; period_no: number; gp_comment: string | null }, userId: string) {
   return sql.begin(async (tx) => {
     const fund = await lockFund(tx as unknown as typeof sql, fundId);
-    const max = input.period_type === "quarterly" ? 4 : input.period_type === "semiannual" ? 2 : 1;
+    const max = input.period_type === "monthly" ? 12 : input.period_type === "quarterly" ? 4 : input.period_type === "semiannual" ? 2 : 1;
     if (input.period_no < 1 || input.period_no > max) throw new AppError(400, "VALIDATION_ERROR", "기간 순번을 확인하세요", undefined, { fields: { period_no: `1~${max} 중에서 고르세요` } });
     const { start, end } = periodRange(input.period_type, input.year, input.period_no);
     if (fund.formation_date && end < fund.formation_date) {

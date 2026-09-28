@@ -60,9 +60,9 @@ export default async function CompanyDetailPage(props: PageProps<"/companies/[co
                 <thead className="text-left text-xs text-slate-500">
                   <tr>
                     <th className="py-2">조합</th>
-                    <th className="py-2 text-right">투자 원금</th>
-                    <th className="py-2 text-right">남은 원금</th>
-                    <th className="py-2 text-right">평가액</th>
+                    <th className="py-2 text-right">취득원가</th>
+                    <th className="py-2 text-right">장부가액</th>
+                    <th className="py-2 text-right">공정가치</th>
                     <th className="py-2 text-right">상태</th>
                   </tr>
                 </thead>

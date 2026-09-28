@@ -11,7 +11,9 @@
     "db:seed": "node --env-file=.env.local scripts/seed-demo.mjs",
     "db:seed-staff": "node --env-file=.env.local scripts/seed-staff.mjs",
     "db:seed-sample": "node --env-file=.env.local scripts/seed-sample-data.mjs",
-    "db:seed-sample-deals": "node --env-file=.env.local scripts/seed-sample-deals.mjs"
+    "db:seed-sample-deals": "node --env-file=.env.local scripts/seed-sample-deals.mjs",
+    "db:seed-sample-exits": "node --env-file=.env.local scripts/seed-sample-exits.mjs",
+    "db:backfill-journal": "node --env-file=.env.local scripts/backfill-journal.mjs"
   },
   "dependencies": {
     "next": "16.3.6",

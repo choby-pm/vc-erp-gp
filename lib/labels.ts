@@ -145,6 +145,33 @@ export const SECURITY_TYPE_LABEL: Record<SecurityType, string> = {
   other: "기타",
 };
 
+// 조합 기타 비용 (관리보수 외, D34)
+export const EXPENSE_TYPES = ["audit", "custody", "administration", "organization", "legal", "tax", "other"] as const;
+export type ExpenseType = (typeof EXPENSE_TYPES)[number];
+
+export const EXPENSE_TYPE_LABEL: Record<ExpenseType, string> = {
+  audit: "회계감사 수수료",
+  custody: "수탁 보수",
+  administration: "사무관리 보수",
+  organization: "설립 비용",
+  legal: "법률·자문 비용",
+  tax: "세금·공과금",
+  other: "기타",
+};
+
+// 조합 현금 흐름 구분 (재무 탭)
+export type CashFlowKind = "contribution" | "investment" | "management_fee" | "expense" | "exit" | "distribution";
+
+// 현금출납장의 거래 구분 (회계 용어)
+export const CASH_FLOW_LABEL: Record<CashFlowKind, string> = {
+  contribution: "출자금 수입",
+  investment: "투자자산 취득",
+  management_fee: "관리보수 지급",
+  expense: "비용 지급",
+  exit: "투자자산 처분",
+  distribution: "분배금 지급",
+};
+
 // 관계 기관 (단계 3. 결성)
 export const INSTITUTION_TYPES = ["custodian", "administrator", "auditor"] as const;
 export type InstitutionType = (typeof INSTITUTION_TYPES)[number];
@@ -167,4 +194,29 @@ export const VOTE_CHOICE_LABEL: Record<VoteChoice, string> = {
   for: "찬성",
   against: "반대",
   abstain: "기권",
+};
+
+// 회수 형태 (BR-EXIT-04: 상각은 회수 금액 0)
+export const EXIT_TYPES = ["ipo", "trade_sale", "m_and_a", "redemption", "write_off"] as const;
+export type ExitType = (typeof EXIT_TYPES)[number];
+export const EXIT_TYPE_LABEL: Record<ExitType, string> = {
+  ipo: "IPO 후 매각",
+  trade_sale: "구주 매각",
+  m_and_a: "M&A",
+  redemption: "상환",
+  write_off: "상각",
+};
+
+// 분배 (BR-DIST-04~06)
+export type DistributionStatus = "draft" | "confirmed" | "paid";
+export const DISTRIBUTION_STATUS_LABEL: Record<DistributionStatus, string> = { draft: "초안", confirmed: "확정", paid: "지급 완료" };
+
+// 워터폴 단계 (04 업무 규칙 10-1)
+export const DISTRIBUTION_COMPONENTS = ["return_of_capital", "hurdle_return", "profit", "carried_interest"] as const;
+export type DistributionComponent = (typeof DISTRIBUTION_COMPONENTS)[number];
+export const DISTRIBUTION_COMPONENT_LABEL: Record<DistributionComponent, string> = {
+  return_of_capital: "원금 반환",
+  hurdle_return: "기준수익",
+  profit: "초과수익",
+  carried_interest: "성과보수",
 };

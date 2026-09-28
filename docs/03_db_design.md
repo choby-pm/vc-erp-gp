@@ -113,13 +113,13 @@ erDiagram
 | 돈의 원장 | `ledger_entries` | 전 단계 |
 | 출자 요청 | `capital_calls`, `capital_call_items` | 3. 결성, 4. 운용 |
 | 투자 | `deals`, `deal_stage_history`, `deal_notes`, `investments`, `valuations` | 4. 운용 |
-| 보수 | `management_fee_charges` | 4. 운용 |
+| 보수·비용 | `management_fee_charges`, `fund_expenses` | 4. 운용 |
 | 총회·보고 | `general_meetings`, `agendas`, `votes`, `reports` | 5. 보고·총회 |
 | 회수·분배 | `exits`, `distributions`, `distribution_items` | 6. 회수·청산 |
 | LP 연동 | `notices`, `notice_recipients`, `integration_events` | 전 단계 |
 | API 공통 | `idempotency_keys`, `sessions` | 전 단계 |
 
-테이블 32개, 계산용 뷰 4개.
+테이블 37개, 계산용 뷰 4개. (회계: `accounts`, `journal_entries`, `journal_lines`, `fiscal_closings` — 4-7b)
 
 ---
 
@@ -421,6 +421,65 @@ erDiagram
 > LP나 감사인이 "이 보수가 왜 이 금액인가"를 물으면 행 하나로 답할 수 있다.
 > 관리보수는 조합 → GP로 나가는 돈이라 조합원 원장이 아니라 이 테이블에 둔다.
 
+#### `fund_expenses` — 조합 기타 비용 (D34)
+| 컬럼 | 자료형 | 설명 |
+|---|---|---|
+| 🔑 `id` | uuid | |
+| ❗🔗 `fund_id` | uuid → funds | |
+| ❗ `expense_type` | text | `audit`(회계감사) / `custody`(수탁) / `administration`(사무관리) / `organization`(설립) / `legal`(법률·자문) / `tax`(세금·공과금) / `other` |
+| ❗ `description` | text | 내용 |
+| `payee` | text | 지급처 |
+| ❗ `amount` | bigint | 금액 (양수) |
+| ❗ `paid_date` | date | 지급일 |
+| `cancelled_at`, `cancelled_by`, `cancel_reason` | | 취소 기록. 비어 있으면 유효 |
+
+> **설계 의도**: 관리보수 외에 조합 재산에서 나가는 비용. 조합원 원장이 아니라 별도 테이블에 두고, 틀리면 지우지 않고 취소 표시를 남긴다.
+> `v_fund_summary` 의 현금 잔액·투자 가능 잔액에 반영된다 (`total_expense_amount` 열 추가, 마이그레이션 007).
+
+### 4-7b. 회계 (D35, 마이그레이션 008)
+
+#### `accounts` — 계정과목표 (모든 조합 공통)
+| 컬럼 | 자료형 | 설명 |
+|---|---|---|
+| 🔑 `code` | text | 계정 코드. 1xxx 자산 / 2xxx 부채 / 3xxx 자본 / 4xxx 수익 / 5xxx 비용 |
+| ❗ `name` | text | 예: 현금및현금성자산, 투자자산, 미지급비용, 출자금, 분배금, 이익잉여금, 투자자산처분이익, 관리보수 |
+| ❗ `category` | text | `asset` / `liability` / `equity` / `revenue` / `expense` |
+| ❗ `normal_side` | text | 잔액이 늘어나는 쪽 `debit` / `credit` |
+| `is_contra` | boolean | 차감 계정 (분배금은 자본을 줄인다) |
+
+> 010에서 분배금 계정을 둘로 나눴다: `3020 출자금반환`(원금 반환분), `3110 이익분배금`(기준수익·초과수익·성과보수). 둘 다 자본 차감 계정 (D37).
+
+#### `journal_entries` — 분개 머리글 (추가만 가능)
+| 컬럼 | 자료형 | 설명 |
+|---|---|---|
+| 🔑 `id` | uuid | |
+| ❗🔗 `fund_id` | uuid → funds | |
+| ❗ `entry_no` | integer | 조합 안 순번 `(fund_id, entry_no)` ✨ |
+| ❗ `entry_date` | date | 회계 처리일 |
+| ❗ `description` | text | 적요 |
+| ❗ `source_type`, `source_id` | text, uuid | 원인 업무 기록 (`contribution`, `investment`, `management_fee`, `expense`, `exit`, `distribution` / `manual`, `closing` 은 비움). 업무 기록당 자동 분개 1개 ✨ |
+| 🔗 `reversal_of_id` | uuid → journal_entries | 역분개 대상 (한 번만) |
+
+#### `journal_lines` — 분개 줄 (추가만 가능)
+| 컬럼 | 자료형 | 설명 |
+|---|---|---|
+| 🔑 `id` | uuid | |
+| ❗🔗 `entry_id` | uuid → journal_entries | |
+| ❗🔗 `account_code` | text → accounts | |
+| ❗ `debit`, `credit` | bigint | 한 줄은 차변 또는 대변 하나만 양수 |
+
+> **설계 의도**: 원장(`ledger_entries`)은 조합원별 돈의 원본이고, 분개장은 조합 전체의 복식부기 장부다.
+> 업무 기록과 같은 트랜잭션에서 분개를 만들어 둘이 어긋나지 않게 하고, 재무제표 화면에서 현금 계정과 현금출납장을 대사한다.
+> 차변 합 = 대변 합은 **지연 제약 트리거**(`check_journal_balanced`)가 커밋 시점에 검사한다 — 줄을 하나씩 넣는 중간에는 맞지 않아도 되기 때문이다.
+
+#### `fiscal_closings` — 사업연도 결산
+| 컬럼 | 자료형 | 설명 |
+|---|---|---|
+| ❗🔗 `fund_id`, ❗ `fiscal_year` | | `(fund_id, fiscal_year)` ✨ |
+| ❗ `period_start`, `period_end` | date | 결산 기간. `period_end` 까지 분개 잠금 |
+| 🔗 `closing_entry_id` | uuid → journal_entries | 손익 대체 분개 |
+| ❗ `net_income` | bigint | 그 사업연도 순이익 |
+
 ### 4-8. 총회·보고
 
 #### `general_meetings` — 조합원 총회
@@ -462,7 +521,7 @@ erDiagram
 |---|---|---|
 | 🔑 `id` | uuid | |
 | ❗🔗 `fund_id` | uuid → funds | |
-| ❗ `period_type` | text | `quarterly` / `semiannual` / `annual` |
+| ❗ `period_type` | text | `monthly` / `quarterly` / `semiannual` / `annual` (월간은 009 마이그레이션) |
 | ❗ `period_start`, `period_end` | date | |
 | `snapshot` | jsonb | 발행 시점 조합 숫자 묶음 (약정·납입·투자·평가·분배). 초안은 비움, 발행 시 필수 |
 | `gp_comment` | text | GP 코멘트 |
@@ -483,6 +542,7 @@ erDiagram
 | ❗ `exit_date` | date | |
 | ❗ `proceeds_amount` | bigint | 회수 금액. 상각이면 0 |
 | ❗ `cost_basis_amount` | bigint | 이번 회수에 해당하는 투자 원금 ⚠️ 일부 회수 시 원금 배분 방식 |
+| `memo` | text | 매각 상대·조건 등 (010) |
 
 > **설계 의도**: 한 기업을 여러 번에 나눠 회수할 수 있어서, 회수마다 **그만큼의 원금**을 함께 기록한다.
 > 회수 배수(MOIC) = `proceeds_amount ÷ cost_basis_amount` 로 계산한다.
@@ -497,6 +557,10 @@ erDiagram
 | ❗ `distributable_amount` | bigint | 이번에 분배할 총액 |
 | ❗ `is_final` | boolean | 청산 시 최종 분배 여부 |
 | ❗ `status` | text | `draft`(계산) / `confirmed`(확정) / `paid`(지급 완료) |
+| `memo` | text | (010) |
+| `confirmed_at` · `paid_at` | timestamptz | 확정·지급 처리 시각 (010) |
+
+> 진행 중(`draft`·`confirmed`)인 분배는 조합당 1건, 최종 분배(`is_final`)도 조합당 1건 — 부분 유일 인덱스 (BR-DIST-08, 010).
 
 #### `distribution_items` — 조합원별 분배
 | 컬럼 | 자료형 | 설명 |

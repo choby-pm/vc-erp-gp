@@ -140,21 +140,25 @@ function ItemRow({ base, item, canPay }: { base: string; item: CapitalCallDetail
         )}
       </div>
       {open && (
-        <div className="mt-3 flex flex-wrap items-end gap-2 rounded-xl bg-slate-50 p-3">
+        // 위쪽 기준 정렬: 납입액 아래 "= 00억 원" 안내가 생겨도 입력칸 높이가 어긋나지 않게 한다
+        <div className="mt-3 flex flex-wrap items-start gap-2 rounded-xl bg-slate-50 p-3">
           <label className="block w-56">
-            <span className="text-xs text-slate-600">납입액 (남은 {formatKRWFull(remaining)})</span>
+            <span className="block text-xs leading-4 text-slate-600">납입액 (남은 {formatKRWFull(remaining)})</span>
             <AmountInput value={amount} onChange={setAmount} />
           </label>
-          <label className="block">
-            <span className="text-xs text-slate-600">납입일</span>
-            <input type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          <label className="block w-40">
+            <span className="block text-xs leading-4 text-slate-600">납입일</span>
+            <input type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm leading-5" />
           </label>
-          <button type="button" disabled={busy} onClick={pay} className="mb-0.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
-            {busy ? "기록 중…" : "기록"}
-          </button>
-          <button type="button" onClick={() => setOpen(false)} className="mb-0.5 text-sm text-slate-500">
-            취소
-          </button>
+          {/* 버튼은 라벨 높이(16px + 간격 4px)만큼 내려 입력칸과 같은 줄에 둔다 */}
+          <div className="mt-5 flex items-center gap-2">
+            <button type="button" disabled={busy} onClick={pay} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
+              {busy ? "기록 중…" : "기록"}
+            </button>
+            <button type="button" onClick={() => setOpen(false)} className="px-1 text-sm text-slate-500 hover:text-slate-700">
+              취소
+            </button>
+          </div>
           <p className="w-full text-xs text-slate-500">납입은 원장에 기록되어 고칠 수 없습니다. 잘못 입력하면 취소 행으로 정정합니다.</p>
         </div>
       )}
