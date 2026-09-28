@@ -208,6 +208,9 @@ Idempotency-Key: 7f3c9a2e-…
 | POST | `/funds/{fund_id}/terms` | 규약 새 버전 (가결 안건 필수) | BR-TERM-02, 03 |
 | GET / POST | `/funds/{fund_id}/institutions` | 관계 기관 목록 / 등록 | |
 | PATCH / DELETE | `/funds/{fund_id}/institutions/{id}` | 관계 기관 수정 / 삭제 | |
+| GET | `/funds/{fund_id}/managers` | 운용 인력: 현재 담당(`current`) + 교체 이력(`history`) + `has_lead` + `changes_need_agenda` | BR-MGR-03 |
+| POST | `/funds/{fund_id}/managers` | 선임 `{ "staff_id", "role", "start_date" }`. `replaces_id` 를 주면 그 운용 인력을 같은 날짜로 해임하고 선임(교체). 결성 이후엔 `agenda_id` 필수 | BR-MGR-01, 02, 04, 05 |
+| POST 🔄 | `/funds/{fund_id}/managers/{manager_id}/end` | 해임 `{ "end_date" }` (결성 이후엔 `agenda_id` 필수). 행은 지우지 않는다 | BR-MGR-04, 05 |
 
 ### 3-4. 모집·조합원
 

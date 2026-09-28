@@ -96,6 +96,7 @@ planning ──① → fundraising ──② → formed ──③ → operating 
 - **BR-MGR-03 결성 조건** ⚠️: 결성하려면 대표펀드매니저가 지정되어 있어야 한다 (BR-FUND-02). 핵심운용인력 최소 인원 등 추가 요건은 실무 확인 후 반영한다.
 - **BR-MGR-04 결성 후 교체**: 기획·모집 중에는 자유롭게 지정·교체할 수 있다. **결성 이후에는 가결된 운용 인력 교체 안건(`manager_change`)이 있어야** 선임·해임할 수 있다 (`AGENDA_NOT_PASSED`).
 - **BR-MGR-05 이력**: 교체는 기존 행에 해임일을 넣고 새 행을 추가한다. 이전 담당 이력은 지우지 않는다.
+- **BR-MGR-06 날짜**: 선임일은 입사일 이후, 해임일·교체일은 기존 선임일 이후여야 한다 (`INVALID_DATE`). 교체하면 기존 담당의 해임일 = 새 담당의 선임일이다. 같은 사람의 역할을 바꾸는 것도 교체로 처리한다.
 
 ### 3-0. 출자자 기준 정보
 
@@ -401,6 +402,10 @@ sourcing → reviewing → ic → approved
 | `EMAIL_REQUIRED` | BR-STF-03 | 로그인 계정을 만들려면 업무 이메일이 필요합니다 |
 | `ACCOUNT_DISABLED` | BR-STF-04 | 사용이 중지된 계정입니다 |
 | `CANNOT_DISABLE_SELF` | BR-STF-05 | 자기 자신의 계정은 중지하거나 퇴사 처리할 수 없습니다 |
+| `STAFF_NOT_ACTIVE` | BR-MGR-01 | 퇴사한 구성원은 운용 인력으로 지정할 수 없습니다 |
+| `LEAD_EXISTS` | BR-MGR-02 | 대표펀드매니저는 조합당 1명입니다. 기존 대표펀드매니저를 교체하세요 |
+| `ALREADY_ASSIGNED` | BR-MGR-02 | 이미 이 조합을 담당 중인 구성원입니다. 역할을 바꾸려면 교체하세요 |
+| `MANAGER_NOT_ACTIVE` | BR-MGR-05 | 현재 담당 중인 운용 인력이 아닙니다 (이미 해임됨) |
 
 ---
 
