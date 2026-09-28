@@ -27,7 +27,10 @@ export default async function LpDetailPage(props: PageProps<"/lps/[lpId]">) {
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-bold text-slate-900">{lp.name}</h1>
           <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">{LP_TYPE_LABEL[lp.lp_type]}</span>
-          <Link href={`/lps/${lp.id}/edit`} className="ml-auto rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+          <Link href={`/lps/${lp.id}/portal`} className="ml-auto rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">
+            LP 공개 데이터 미리보기
+          </Link>
+          <Link href={`/lps/${lp.id}/edit`} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
             수정
           </Link>
         </div>

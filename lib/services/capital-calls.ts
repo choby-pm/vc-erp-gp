@@ -331,7 +331,7 @@ export async function issueCapitalCall(fundId: string, callId: string, userId: s
       const body = [
         `${m.member_name} 귀중`,
         "",
-        `${fund.name}의 ${call.is_initial ? "최초 납입" : `제${call.call_no}차 출자`}을 아래와 같이 요청드립니다.`,
+        `${fund.name}의 ${call.is_initial ? "최초 납입을" : `제${call.call_no}차 출자를`} 아래와 같이 요청드립니다.`,
         "",
         `· 요청 금액: ${formatKRWFull(it.call_amount)}`,
         `· 요청일: ${formatDate(call.call_date)}`,

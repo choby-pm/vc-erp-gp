@@ -19,7 +19,7 @@ export function withUser<Ctx>(handler: (request: Request, ctx: Ctx, user: Curren
   };
 }
 
-function toErrorResponse(err: unknown) {
+export function toErrorResponse(err: unknown) {
   if (err instanceof AppError) {
     return fail(err.status, err.code, err.message, { rule: err.rule, details: err.details });
   }

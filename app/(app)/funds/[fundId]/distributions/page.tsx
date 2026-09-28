@@ -4,7 +4,7 @@ import { formatDate, formatKRW, formatKRWFull } from "@/lib/format";
 import { DISTRIBUTION_STATUS_LABEL, type DistributionStatus } from "@/lib/labels";
 import { listDistributions } from "@/lib/services/distributions";
 
-// 출자자·조합원 > 분배: 분배 만들기(워터폴 계산) + 분배 이력 (04 업무 규칙 10)
+// 투자·회수 > 분배: 분배 만들기(워터폴 계산) + 분배 이력 (04 업무 규칙 10)
 
 const STATUS_COLOR: Record<DistributionStatus, string> = {
   draft: "bg-slate-100 text-slate-600",
