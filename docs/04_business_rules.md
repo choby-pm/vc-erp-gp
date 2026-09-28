@@ -437,6 +437,7 @@ sourcing → reviewing → ic → approved
 
 - **BR-NTC-01 발송 후 잠금**: 발송된 통지는 수정·삭제할 수 없다. 정정이 필요하면 새 통지를 보낸다.
 - **BR-NTC-02 확인 기록**: LP 확인 시각은 LP 시스템이 연동 API로 알려줄 때만 기록된다. GP가 직접 입력할 수 없다.
+- **BR-NTC-03 일반 공지** (R7): 모집·결성·운용·해산 상태에서 작성한다. 초안 → 발송 순서이고, 수신자를 비우면 LP 조합원 전원이다. 조합원이 아닌 LP에게는 보낼 수 없다 (`NOT_A_MEMBER`). 발송하면 수신 LP마다 `notice.sent` 이벤트를 만든다. 조합 탭 **총회·보고 > 통지**에서 자동 통지(출자 제안·캐피탈콜·총회·보고·분배)와 함께 LP별 확인 현황을 본다.
 
 ### 12-2. 연동 이벤트
 
@@ -456,6 +457,13 @@ sourcing → reviewing → ic → approved
 - **BR-EVT-03 재전송**: 전송 실패 시 `failed` 로 두고 재시도한다. 5회 연속 실패하면 재시도를 멈추고 대시보드에 표시한다.
 - **BR-EVT-04 순서와 중복**: 같은 LP에게 가는 이벤트는 생성 순서대로 보낸다. 받는 쪽(LP 시스템)은 이벤트 ID로 중복을 거른다.
 - **BR-EVT-05 🔴 비공개 데이터 차단**: 🔴 등급 테이블의 데이터는 이벤트 `payload` 에 절대 넣지 않는다.
+- **BR-EVT-06 전송** (R7): 웹훅 주소(`LP_SYSTEM_WEBHOOK_URL`)가 설정되어 있을 때만 보낸다. 없으면 `pending` 으로 쌓이고, LP 시스템은 `GET /api/lp/v1/events?after=` 로 직접 가져갈 수 있다. 서명은 `HMAC-SHA256(LP_WEBHOOK_SECRET, 타임스탬프 + "." + 본문)`. 실패하면 1분·5분·30분·2시간·12시간 간격으로 다시 보내고 5번째 실패에서 `failed` 로 멈춘다. 같은 LP의 뒤 이벤트는 앞 이벤트가 전송될 때까지 기다린다 (BR-EVT-04). GP는 **LP 연동** 화면에서 지금 전송·재전송한다.
+
+### 12-3. LP 연동 API (R7)
+
+- **BR-LPAPI-01 인증**: `Authorization: Bearer {LP_SYSTEM_API_KEY}`. 키가 없거나 틀리면 `401`, 서버에 키가 설정되지 않았으면 `503 LP_API_DISABLED`.
+- **BR-LPAPI-02 공개 등급**: 🟢 본인 것만, 🔵 조합원인 조합만(아니면 `403 FORBIDDEN`), 🟡 정기 보고 스냅샷으로만, 🔴 반환하지 않음. `memo`·`created_by`·내부 문서 ID(`source_id`)·LP 연락처는 어떤 응답에도 넣지 않는다. 원장 출처는 "제2차 캐피탈콜"처럼 LP가 이해할 수 있는 정보로 바꿔 준다.
+- **BR-LPAPI-03 미리보기**: GP 출자자 화면의 **LP 공개 데이터 미리보기**는 LP 연동 API와 같은 함수로 그린다 (LP 시스템이 보는 것과 항상 같다).
 
 ---
 
@@ -482,6 +490,9 @@ sourcing → reviewing → ic → approved
 | `DISTRIBUTION_IN_PROGRESS` | BR-DIST-08 | 진행 중인 분배가 있습니다. 먼저 지급을 마치거나 초안을 삭제하세요 |
 | `DISTRIBUTION_STALE` | BR-DIST-10 | 초안 이후 계산 결과가 달라졌습니다. 초안을 삭제하고 다시 만드세요 |
 | `NOT_A_HOLDING` | BR-EXIT-02, BR-INV-02, BR-VAL-01 | 이 조합이 보유 중인 기업이 아닙니다 |
+| `NOT_A_MEMBER` · `NO_RECIPIENT` | BR-NTC-03 | 이 조합의 LP 조합원에게만 보낼 수 있습니다 / 받을 LP 조합원이 없습니다 |
+| `FORBIDDEN` | BR-LPAPI-02 | 이 출자자가 조합원인 조합이 아닙니다 |
+| `LP_API_DISABLED` | BR-LPAPI-01 | LP 연동 API 키가 설정되지 않았습니다 |
 | `DOCUMENT_LOCKED` | BR-COM-03 | 확정된 문서는 수정할 수 없습니다 |
 | `ALREADY_REVERSED` | BR-LED-02 | 이미 취소된 기록입니다 |
 | `AGENDA_NOT_PASSED` | BR-TERM-02, BR-FUND-02, 04 | 가결된 안건이 필요합니다 |

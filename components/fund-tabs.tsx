@@ -30,7 +30,6 @@ const GROUPS: Group[] = [
       { href: "/proposals", label: "출자 제안" },
       { href: "/members", label: "조합원·원장" },
       { href: "/capital-calls", label: "캐피탈콜" },
-      { href: "/distributions", label: "분배", needsFormation: true },
     ],
   },
   {
@@ -39,6 +38,7 @@ const GROUPS: Group[] = [
       { href: "/investments", label: "투자 집행", needsFormation: true },
       { href: "/portfolio", label: "포트폴리오", needsFormation: true },
       { href: "/exits", label: "회수", needsFormation: true },
+      { href: "/distributions", label: "분배", needsFormation: true }, // 회수한 돈을 조합원에게 돌려주는 흐름 (회수 → 분배)
     ],
   },
   {
@@ -58,6 +58,7 @@ const GROUPS: Group[] = [
       { href: "/meetings", label: "총회" },
       { href: "/terms", label: "규약" },
       { href: "/reports", label: "정기 보고", needsFormation: true },
+      { href: "/notices", label: "통지" },
     ],
   },
 ];

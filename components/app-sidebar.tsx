@@ -25,6 +25,7 @@ const SECTIONS: { title: string; items: Item[] }[] = [
   {
     title: "조합 운용",
     items: [
+      { href: "/", label: "대시보드", icon: icon("M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z") },
       { href: "/funds", label: "조합", icon: icon("M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6") },
       { href: "/deals", label: "딜·기업", icon: icon("M4 5h4v14H4zM10 5h4v9h-4zM16 5h4v5h-4z"), also: ["/companies"] },
     ],
@@ -34,6 +35,16 @@ const SECTIONS: { title: string; items: Item[] }[] = [
     items: [
       { href: "/lps", label: "출자자", icon: icon("M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6M22 19v-1a4 4 0 0 0-3-3.87M16 4.13a3 3 0 0 1 0 5.74") },
       { href: "/staff", label: "구성원", icon: icon("M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8") },
+    ],
+  },
+  {
+    title: "시스템",
+    items: [
+      {
+        href: "/integrations",
+        label: "LP 연동",
+        icon: icon("M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"),
+      },
     ],
   },
 ];
@@ -60,7 +71,8 @@ export default function AppSidebar({ userName, initialFolded }: { userName: stri
           )}
           <ul className={`space-y-0.5 ${compact ? "" : "mt-2"}`}>
             {section.items.map((item) => {
-              const active = [item.href, ...(item.also ?? [])].some((h) => pathname === h || pathname.startsWith(`${h}/`));
+              // "/"(대시보드)는 정확히 일치할 때만 활성
+              const active = item.href === "/" ? pathname === "/" : [item.href, ...(item.also ?? [])].some((h) => pathname === h || pathname.startsWith(`${h}/`));
               return (
                 <li key={item.href}>
                   <Link
@@ -100,7 +112,7 @@ export default function AppSidebar({ userName, initialFolded }: { userName: stri
     );
 
   const logo = (
-    <Link href="/funds" className="truncate text-sm font-bold text-slate-900">
+    <Link href="/" className="truncate text-sm font-bold text-slate-900">
       <span className="text-indigo-600">VC ERP</span> · GP
     </Link>
   );

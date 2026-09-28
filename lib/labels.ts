@@ -220,3 +220,15 @@ export const DISTRIBUTION_COMPONENT_LABEL: Record<DistributionComponent, string>
   profit: "초과수익",
   carried_interest: "성과보수",
 };
+
+// 통지 (12-1). GP → LP 로 가는 모든 요청은 통지로 남는다
+export const NOTICE_TYPES = ["proposal", "capital_call", "meeting", "report", "distribution", "general"] as const;
+export type NoticeType = (typeof NOTICE_TYPES)[number];
+export const NOTICE_TYPE_LABEL: Record<NoticeType, string> = {
+  proposal: "출자 제안",
+  capital_call: "캐피탈콜",
+  meeting: "총회 소집",
+  report: "정기 보고",
+  distribution: "분배",
+  general: "일반 공지",
+};
