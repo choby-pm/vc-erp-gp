@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { FundStatusBadge } from "@/components/fund-status";
-import { formatDate, formatKRW, formatKRWFull } from "@/lib/format";
+import { formatDate, formatKRW, formatKRWFull, formatPercent } from "@/lib/format";
 import { FUND_TYPE_LABEL } from "@/lib/labels";
 import { listFunds } from "@/lib/services/funds";
 
@@ -37,7 +37,7 @@ export default async function FundsPage() {
                 <th className="px-4 py-3">조합명</th>
                 <th className="px-4 py-3">상태</th>
                 <th className="px-4 py-3 text-right">목표 결성액</th>
-                <th className="px-4 py-3 text-right">약정 총액</th>
+                <th className="px-4 py-3 text-right">약정 총액 (결성 전: 확약)</th>
                 <th className="px-4 py-3 text-right">생성일</th>
               </tr>
             </thead>
@@ -56,9 +56,17 @@ export default async function FundsPage() {
                   <td className="px-4 py-3 text-right tabular-nums" title={formatKRWFull(fund.target_amount)}>
                     {formatKRW(fund.target_amount)}
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-slate-500" title={formatKRWFull(fund.total_commitment_amount)}>
-                    {fund.total_commitment_amount > 0 ? formatKRW(fund.total_commitment_amount) : "결성 전"}
-                  </td>
+                  {fund.total_commitment_amount > 0 ? (
+                    <td className="px-4 py-3 text-right tabular-nums" title={formatKRWFull(fund.total_commitment_amount)}>
+                      {formatKRW(fund.total_commitment_amount)}
+                    </td>
+                  ) : (
+                    <td className="px-4 py-3 text-right tabular-nums text-slate-500" title={formatKRWFull(fund.committed_loc_amount)}>
+                      {fund.committed_loc_amount > 0
+                        ? `확약 ${formatKRW(fund.committed_loc_amount)} (${formatPercent(fund.committed_loc_amount / fund.target_amount, 0)})`
+                        : "결성 전"}
+                    </td>
+                  )}
                   <td className="px-4 py-3 text-right text-slate-500">{formatDate(fund.created_at)}</td>
                 </tr>
               ))}

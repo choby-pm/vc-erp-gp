@@ -109,7 +109,7 @@ erDiagram
 | 기준 정보 | `users`, `staff`, `limited_partners`, `companies` | 공통 |
 | 운용 인력 | `fund_managers` | 1. 기획 ~ 청산 |
 | 조합 | `funds`, `fund_terms`, `related_institutions` | 1. 기획, 3. 결성 |
-| 모집·조합원 | `lp_proposals`, `fund_members` | 2. 모집, 3. 결성 |
+| 모집·조합원 | `lp_proposals`, `fund_rosters`, `fund_members` | 2. 모집, 3. 결성 |
 | 돈의 원장 | `ledger_entries` | 전 단계 |
 | 출자 요청 | `capital_calls`, `capital_call_items` | 3. 결성, 4. 운용 |
 | 투자 | `deals`, `deal_stage_history`, `deal_notes`, `investments`, `valuations` | 4. 운용 |
@@ -119,7 +119,7 @@ erDiagram
 | LP 연동 | `notices`, `notice_recipients`, `integration_events` | 전 단계 |
 | API 공통 | `idempotency_keys`, `sessions` | 전 단계 |
 
-테이블 31개, 계산용 뷰 4개.
+테이블 32개, 계산용 뷰 4개.
 
 ---
 
@@ -272,6 +272,18 @@ erDiagram
 > 그래야 캐피탈콜·의결·분배를 계산할 때 GP를 빠뜨리지 않는다.
 > 조합당 GP 조합원은 1명만 허용한다 (부분 유일 제약).
 > **약정액 컬럼이 없는 이유**: 약정액은 원장에만 있다 (원칙 1).
+> 명부를 취소해도 행을 지우지 않는다(원장이 참조). 다시 확정하면 같은 행을 재사용하고, 현재 조합원 = 원장 약정 합계 > 0 인 조합원이다 (D33).
+
+#### `fund_rosters` — 조합원 명부 확정 기록 (D33)
+| 컬럼 | 자료형 | 설명 |
+|---|---|---|
+| 🔑 `id` | uuid | 약정 원장(`source_type = formation`)의 `source_id` |
+| ❗🔗 `fund_id` | uuid → funds | 조합당 유효한(취소되지 않은) 명부 1개 ✨ (부분 유일 인덱스) |
+| ❗ `confirmed_date` | date | 명부 확정일 = 약정일 |
+| `cancelled_at`, `cancelled_by`, `cancel_reason` | | 명부 취소 기록. 비어 있으면 유효한 명부 |
+
+> **설계 의도**: 원장 행은 원인 문서가 반드시 있어야 한다(BR-LED-03). 명부 확정이 그 원인 문서다.
+> 취소·재확정 이력이 이 테이블에 남고, 취소하면 그 명부의 약정 원장을 취소 행으로 되돌린다.
 
 ### 4-4. 돈의 원장
 

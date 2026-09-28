@@ -20,9 +20,24 @@ const ROLE_COLOR: Record<ManagerRole, string> = {
   general: "bg-slate-100 text-slate-600",
 };
 
-export default function FundManagersPanel({ fundId, managers, staffOptions }: { fundId: string; managers: FundManagers; staffOptions: StaffOption[] }) {
+type Agenda = { id: string; title: string; meeting_date: string };
+
+export default function FundManagersPanel({
+  fundId,
+  managers,
+  staffOptions,
+  agendas = [],
+}: {
+  fundId: string;
+  managers: FundManagers;
+  staffOptions: StaffOption[];
+  agendas?: Agenda[]; // 결성 이후: 가결된 운용 인력 교체 안건 (BR-MGR-04)
+}) {
   const router = useRouter();
-  const locked = managers.changes_need_agenda;
+  const needAgenda = managers.changes_need_agenda;
+  const [agendaId, setAgendaId] = useState(agendas[0]?.id ?? "");
+  // 결성 이후에는 근거 안건을 골라야 선임·교체·해임할 수 있다
+  const locked = needAgenda && !agendaId;
   const [replacing, setReplacing] = useState<FundManager | null>(null);
   const [ending, setEnding] = useState<{ id: string; date: string } | null>(null);
   const [form, setForm] = useState({ staff_id: "", role: (managers.has_lead ? "key" : "lead") as ManagerRole, start_date: today() });
@@ -41,7 +56,7 @@ export default function FundManagersPanel({ fundId, managers, staffOptions }: { 
     const res = await fetch(`/api/v1/funds/${fundId}/managers${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(needAgenda ? { ...(body as object), agenda_id: agendaId } : body),
     });
     const json = await res.json().catch(() => ({}));
     setBusy(false);
@@ -87,10 +102,25 @@ export default function FundManagersPanel({ fundId, managers, staffOptions }: { 
     <section className="rounded-2xl border border-slate-200 bg-white p-6">
       <h2 className="text-base font-semibold text-slate-900">운용 인력</h2>
       <p className="mt-0.5 text-xs text-slate-500">
-        {locked
-          ? "결성 이후 선임·해임은 총회에서 운용 인력 교체 안건이 가결되어야 합니다 (총회 기능은 R5에서 제공)."
-          : "결성 전까지 자유롭게 지정·교체할 수 있습니다. 교체해도 이전 담당 이력은 남습니다."}
+        {!needAgenda
+          ? "결성 전까지 자유롭게 지정·교체할 수 있습니다. 교체해도 이전 담당 이력은 남습니다."
+          : agendas.length === 0
+            ? "결성 이후 선임·해임은 총회에서 ‘운용 인력 교체’ 안건이 가결되어야 합니다. 총회 탭에서 안건을 올려 가결하세요."
+            : "결성 이후 선임·해임은 가결된 ‘운용 인력 교체’ 안건을 근거로 기록합니다. 교체해도 이전 담당 이력은 남습니다."}
       </p>
+
+      {needAgenda && agendas.length > 0 && (
+        <label className="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-indigo-50/60 px-4 py-3 text-sm">
+          <span className="font-medium text-slate-700">근거 안건</span>
+          <select value={agendaId} onChange={(e) => setAgendaId(e.target.value)} className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm">
+            {agendas.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.meeting_date} · {a.title}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       {!managers.has_lead && !locked && (
         <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">

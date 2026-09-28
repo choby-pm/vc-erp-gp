@@ -1,6 +1,6 @@
 import { sql } from "@/lib/db";
 import { AppError, assertUuid, notFound } from "@/lib/api/errors";
-import type { FundStatus, LpType } from "@/lib/labels";
+import type { FundStatus, LpType, ProposalStatus } from "@/lib/labels";
 import type { LpInput, LpListQuery } from "@/lib/schemas/lp";
 
 // 출자자(LP) 기준 정보 서비스.
@@ -33,7 +33,7 @@ export type LpDetail = {
     fund_id: string;
     fund_name: string;
     fund_status: FundStatus;
-    proposal_status: string | null;
+    proposal_status: ProposalStatus | null;
     loc_amount: number | null;
     commitment_amount: number | null;
     paid_amount: number | null;
@@ -65,6 +65,11 @@ export async function listLps(query: LpListQuery) {
   `;
 
   return { items, meta: { page: query.page, page_size: query.page_size, total } };
+}
+
+// 선택 목록용 (출자 제안 작성 등): 전체 출자자의 이름·유형만
+export async function listLpOptions() {
+  return sql<{ id: string; name: string; lp_type: LpType }[]>`select id, name, lp_type from limited_partners order by name`;
 }
 
 export async function getLp(lpId: string): Promise<LpDetail> {

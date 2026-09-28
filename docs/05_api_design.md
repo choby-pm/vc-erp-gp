@@ -124,6 +124,8 @@ Idempotency-Key: 7f3c9a2e-…
 - 같은 키로 다시 요청이 오면 **다시 처리하지 않고 처음 결과를 그대로** 돌려준다
 - 같은 키인데 요청 내용이 다르면 `409 IDEMPOTENCY_KEY_REUSED`
 - 키는 24시간 보관한다
+- 성공 응답(2xx)만 저장한다. 실패한 요청은 고쳐서 같은 키로 다시 보낼 수 있다
+- 같은 사용자·같은 키의 동시 요청은 DB advisory lock 으로 한 번에 하나만 처리한다 (`lib/api/idempotency.ts`)
 
 > **왜?** 네트워크가 느려 사용자가 "투자 집행" 버튼을 두 번 누르거나, 응답이 유실돼 화면이 자동 재시도하면
 > 같은 투자가 두 번 기록될 수 있다. 돈이 걸린 작업에서는 치명적이다.
@@ -199,14 +201,15 @@ Idempotency-Key: 7f3c9a2e-…
 | POST | `/funds` | 조합 생성 (`planning`, 규약 버전 1 함께 생성) | |
 | GET | `/funds/{fund_id}` | 조합 상세 + 대시보드 숫자 + 경고 | BR-FUND-07, BR-INV-06 |
 | PATCH | `/funds/{fund_id}` | 기본 정보 수정 (기획·모집 중만) | BR-FUND-08 |
-| GET 👁 | `/funds/{fund_id}/transition-check?to={status}` | 상태 이동 가능 여부 + 부족한 조건 목록 | BR-FUND-01~05 |
-| POST 🔄 | `/funds/{fund_id}/transitions` | 상태 이동 `{ "to_status": "formed" }` | BR-FUND-01~06 |
-| PUT | `/funds/{fund_id}/registration` | 등록 신청일·완료일 입력 | |
+| GET 👁 | `/funds/{fund_id}/transition-check?to={status}` | 상태 이동 가능 여부 + 부족한 조건 목록 (R2-4: 모집·결성·운용까지, 해산·청산은 `TRANSITION_NOT_SUPPORTED`) | BR-FUND-01~05 |
+| POST 🔄 | `/funds/{fund_id}/transitions` | 상태 이동 `{ "to_status": "formed" }`. 이동 시 `fund.status_changed` 이벤트 (전체 대상) | BR-FUND-01~06 |
+| PUT | `/funds/{fund_id}/registration` | 등록 신청일·완료일 입력 (결성 완료 상태에서만) | BR-FUND-03 |
 | GET | `/funds/{fund_id}/terms` | 규약 버전 전체 이력 | |
 | GET | `/funds/{fund_id}/terms/effective?date=` | 특정 날짜에 적용되는 규약 | BR-TERM-04 |
 | PUT | `/funds/{fund_id}/terms/1` | 규약 버전 1 저장 (결성 전만) | BR-TERM-01 |
-| POST | `/funds/{fund_id}/terms` | 규약 새 버전 (가결 안건 필수) | BR-TERM-02, 03 |
-| GET / POST | `/funds/{fund_id}/institutions` | 관계 기관 목록 / 등록 | |
+| POST | `/funds/{fund_id}/terms` | 규약 새 버전 `{ "agenda_id", "effective_date", …규약 항목 }` (가결된 규약 변경 안건 1건당 1개) | BR-TERM-02, 03, 06 |
+| GET | `/funds/{fund_id}/agendas?type=` | 가결된 안건 목록 (규약 변경·운용 인력 교체·약정 증액의 근거 선택용, 규약에 쓰인 버전 표시) | |
+| GET / POST | `/funds/{fund_id}/institutions` | 관계 기관 목록 / 등록 (종류별 1곳) | BR-INST-01 |
 | PATCH / DELETE | `/funds/{fund_id}/institutions/{id}` | 관계 기관 수정 / 삭제 | |
 | GET | `/funds/{fund_id}/managers` | 운용 인력: 현재 담당(`current`) + 교체 이력(`history`) + `has_lead` + `changes_need_agenda` | BR-MGR-03 |
 | POST | `/funds/{fund_id}/managers` | 선임 `{ "staff_id", "role", "start_date" }`. `replaces_id` 를 주면 그 운용 인력을 같은 날짜로 해임하고 선임(교체). 결성 이후엔 `agenda_id` 필수 | BR-MGR-01, 02, 04, 05 |
@@ -216,22 +219,23 @@ Idempotency-Key: 7f3c9a2e-…
 
 | 메서드 | 주소 | 설명 | 규칙 |
 |---|---|---|---|
-| GET | `/funds/{fund_id}/proposals` | 출자 제안 목록 + 모집 달성률 | BR-PROP-04 |
-| POST | `/funds/{fund_id}/proposals` | 출자 제안 작성 | |
-| PATCH | `/funds/{fund_id}/proposals/{id}` | 금액·메모 수정 | |
-| POST 🔄 | `/funds/{fund_id}/proposals/{id}/send` | 제안 발송 (통지 생성) | BR-PROP-03 |
-| POST 🔄 | `/funds/{fund_id}/proposals/{id}/transitions` | 단계 이동 `{ "to_status": "committed", "loc_amount": … }` | BR-PROP-01, 02 |
-| POST 🔄 | `/funds/{fund_id}/roster` | **조합원 명부 확정** (조합원 + 약정 원장 생성) | BR-MEM-01~04 |
-| DELETE 🔄 | `/funds/{fund_id}/roster` | 명부 취소 (결성총회 가결 전만, 원장은 취소 행으로) | BR-MEM-05 |
-| GET | `/funds/{fund_id}/members` | 조합원 목록 + 조합원별 현황(약정·납입·잔여·분배) | |
-| POST 💰 | `/funds/{fund_id}/members/{member_id}/commitment-increases` | 약정 증액 (가결 안건 필수) | BR-MEM-06 |
+| GET | `/funds/{fund_id}/proposals` | 출자 제안 목록(발송 횟수 포함) + `summary`(목표·최소 결성액, 확약 합, 달성률, 상태별 건수) + `can_edit` / `can_send` | BR-PROP-04 |
+| POST | `/funds/{fund_id}/proposals` | 출자 제안 작성 `{ "lp_id", "proposed_amount"?, "proposed_date", "memo"? }` | BR-PROP-05 |
+| PATCH | `/funds/{fund_id}/proposals/{id}` | 금액·메모 수정 `{ "proposed_amount", "loc_amount", "memo" }` (전체 교체, 확약 금액은 확약 상태만) | BR-PROP-06 |
+| POST 🔄 | `/funds/{fund_id}/proposals/{id}/send` | 제안 발송 (통지 + 수신자 + `notice.sent` 이벤트, 재발송 가능) | BR-PROP-03, 07 |
+| POST 🔄 | `/funds/{fund_id}/proposals/{id}/transitions` | 단계 이동 `{ "to_status": "committed", "loc_amount": …, "decided_date"? }` | BR-PROP-01, 02, 06 |
+| GET | `/funds/{fund_id}/roster` | 명부 상태 + 조합원 + 확정 후보(확약된 제안) + 취소 이력 + `can_confirm` / `cancel_blocked_reason` | |
+| POST 🔄 | `/funds/{fund_id}/roster` | **조합원 명부 확정** `{ "confirmed_date", "gp_commitment_amount", "members": [{ "proposal_id", "commitment_amount" }] }` (조합원 + 약정 원장 + 이벤트) | BR-MEM-01~04, 07 |
+| DELETE 🔄 | `/funds/{fund_id}/roster` | 명부 취소 `{ "reason" }` (결성 안건 가결·캐피탈콜 전만, 원장은 취소 행으로) | BR-MEM-05 |
+| GET | `/funds/{fund_id}/members` | 조합원 목록 + 조합원별 현황(약정·지분율·요청·납입·잔여) | |
+| POST 💰 | `/funds/{fund_id}/members/{member_id}/commitment-increases` | 약정 증액 `{ "agenda_id", "amount", "entry_date" }` (가결된 규약 변경 안건 필수, `Idempotency-Key` 필수) | BR-MEM-03, 06, 07 |
 
 ### 3-5. 원장
 
 | 메서드 | 주소 | 설명 | 규칙 |
 |---|---|---|---|
 | GET | `/funds/{fund_id}/ledger` | 원장 조회 (`?member_id=`, `?entry_type=`) | |
-| POST 💰 | `/funds/{fund_id}/ledger/{entry_id}/reversal` | 원장 행 취소 `{ "memo": "…" }` | BR-LED-02 |
+| POST 💰 | `/funds/{fund_id}/ledger/{entry_id}/reversal` | 원장 행 취소 `{ "memo": "…" }` (납입만, `Idempotency-Key` 필수) | BR-LED-02, 05 |
 
 ### 3-6. 캐피탈콜
 
@@ -242,31 +246,30 @@ Idempotency-Key: 7f3c9a2e-…
 | POST | `/funds/{fund_id}/capital-calls` | 초안 생성 (조합원별 항목 자동 계산·저장) | BR-CALL-01~06 |
 | GET | `/funds/{fund_id}/capital-calls/{call_id}` | 상세 + 조합원별 납입 상태 | BR-CALL-11 |
 | PATCH / DELETE | `/funds/{fund_id}/capital-calls/{call_id}` | 초안 수정 / 삭제 | BR-COM-03 |
-| POST 🔄💰 | `/funds/{fund_id}/capital-calls/{call_id}/issue` | 발송 (잠금 + 통지) | BR-CALL-07 |
-| POST 💰 | `/funds/{fund_id}/capital-calls/{call_id}/items/{item_id}/payments` | 납입 기록 | BR-CALL-08~10 |
+| POST 🔄💰 | `/funds/{fund_id}/capital-calls/{call_id}/issue` | 발송 (잠금 + LP별 통지, `Idempotency-Key` 필수) | BR-CALL-07 |
+| POST 💰 | `/funds/{fund_id}/capital-calls/{call_id}/items/{item_id}/payments` | 납입 기록 (원장 + 이벤트, 완납 시 자동 마감, `Idempotency-Key` 필수) | BR-CALL-08~10, 12 |
 | POST 🔄 | `/funds/{fund_id}/capital-calls/{call_id}/close` | 수동 마감 | BR-CALL-12 |
 
 ### 3-7. 딜 파이프라인
 
 | 메서드 | 주소 | 설명 | 규칙 |
 |---|---|---|---|
-| GET | `/deals` | 딜 목록 (`?stage=`, `?owner_id=`, `?fund_id=`) | |
-| GET | `/deals/board` | 단계별로 묶은 칸반 보드용 데이터 | |
+| GET | `/deals` | 딜 목록 (`?stage=`, `?owner_id=`, `?fund_id=`). 칸반 보드는 이 목록을 화면에서 단계별로 묶는다 (R4-1에서 `/deals/board` 대신) | |
 | GET | `/deals/stats` | 단계별 건수, 단계별 평균 소요일, 드롭 사유 분포 | |
 | POST | `/deals` | 딜 등록 (`sourcing`) | |
 | GET | `/deals/{deal_id}` | 상세 + 단계 이력 + 메모 | |
 | PATCH | `/deals/{deal_id}` | 단계 외 정보 수정 (종료 전만) | BR-DEAL-02 |
-| POST 🔄 | `/deals/{deal_id}/transitions` | 단계 이동 `{ "to_stage": "dropped", "drop_reason": "…" }` | BR-DEAL-01~05 |
+| POST 🔄 | `/deals/{deal_id}/transitions` | 단계 이동 `{ "to_stage": "dropped", "drop_reason": "…" }`. 투자 확정 때 `target_fund_id`, `expected_amount` 를 함께 보낼 수 있다 | BR-DEAL-01~06 |
 | GET / POST | `/deals/{deal_id}/notes` | 메모 목록 / 작성 | |
 
 ### 3-8. 투자·포트폴리오
 
 | 메서드 | 주소 | 설명 | 규칙 |
 |---|---|---|---|
-| GET | `/funds/{fund_id}/investments` | 투자 집행 목록 | |
-| POST 💰 | `/funds/{fund_id}/investments` | 투자 집행 (신규·후속) | BR-INV-01~05 |
-| GET | `/funds/{fund_id}/portfolio` | 포트폴리오 (기업별 투자·평가·회수·상태) | |
-| GET / POST | `/funds/{fund_id}/valuations` | 평가 목록 / 기록 | BR-VAL-01~03 |
+| GET | `/funds/{fund_id}/investments` | 투자 집행 목록 + `summary`(투자 가능 잔액·현금·주목적 비율·경고) | BR-INV-06 |
+| POST 💰 | `/funds/{fund_id}/investments` | 투자 집행 (신규·후속, `Idempotency-Key` 필수). 응답에 `fund_after`(투자 후 잔액·경고) | BR-INV-01~07 |
+| GET | `/funds/{fund_id}/portfolio` | 포트폴리오 (기업별 투자·평가·회수·상태) + 합계·총 가치 배수 + 평가 이력 | BR-VAL-03 |
+| GET / POST | `/funds/{fund_id}/valuations` | 평가 목록 / 기록 `{ "company_id", "valuation_date", "fair_value_amount", "method"? }` | BR-VAL-01~04 |
 | GET | `/funds/{fund_id}/exits` | 회수 목록 | |
 | POST 💰 | `/funds/{fund_id}/exits` | 회수 기록 | BR-EXIT-01~06 |
 
@@ -275,17 +278,17 @@ Idempotency-Key: 7f3c9a2e-…
 | 메서드 | 주소 | 설명 | 규칙 |
 |---|---|---|---|
 | GET | `/funds/{fund_id}/management-fees` | 청구 이력 | |
-| POST 👁 | `/funds/{fund_id}/management-fees/preview` | 기간을 넣으면 분할·계산 결과 | BR-FEE-01~07 |
-| POST 💰 | `/funds/{fund_id}/management-fees` | 청구 저장 (미리보기와 같은 계산) | BR-FEE-01~07 |
+| POST 👁 | `/funds/{fund_id}/management-fees/preview` | `{ "year", "quarter" }` → 구간 분할·기준 금액·요율·일수·보수 + 현금 충분 여부 | BR-FEE-01~08 |
+| POST 💰 | `/funds/{fund_id}/management-fees` | 청구 저장 `{ "year", "quarter", "charged_date" }` (미리보기와 같은 계산, `Idempotency-Key` 필수) | BR-FEE-01~08 |
 
 ### 3-10. 총회
 
 | 메서드 | 주소 | 설명 | 규칙 |
 |---|---|---|---|
-| GET / POST | `/funds/{fund_id}/meetings` | 총회 목록 / 생성 | BR-MTG-01, 02 |
-| GET / PATCH | `/funds/{fund_id}/meetings/{meeting_id}` | 상세(안건·투표 현황) / 수정(예정 상태만) | |
+| GET / POST | `/funds/{fund_id}/meetings` | 총회 목록(+ 지금 열 수 있는 유형) / 생성 `{ "meeting_type", "meeting_date", "location"?, "agendas"?: [...] }` (결성·해산 안건 자동 포함) | BR-MTG-01, 02, 04 |
+| GET / PATCH | `/funds/{fund_id}/meetings/{meeting_id}` | 상세(안건별 찬반 집계·조합원 의결권) / 일정·장소 수정(예정 + 소집 전만) | BR-MTG-04 |
 | POST 🔄 | `/funds/{fund_id}/meetings/{meeting_id}/convene` | 소집 (통지 생성) | BR-MTG-03 |
-| POST | `/funds/{fund_id}/meetings/{meeting_id}/agendas` | 안건 추가 (가결 기준 복사) | BR-VOTE-04 |
+| POST | `/funds/{fund_id}/meetings/{meeting_id}/agendas` | 안건 추가 (소집 전만, 가결 기준 복사) | BR-VOTE-04, BR-MTG-04 |
 | PUT | `/funds/{fund_id}/meetings/{meeting_id}/agendas/{agenda_id}/votes/{member_id}` | 투표 기록 `{ "choice": "for" }` | BR-VOTE-01, 02 |
 | POST 🔄 | `/funds/{fund_id}/meetings/{meeting_id}/hold` | 개최 처리 + 모든 안건 결과 확정 | BR-VOTE-03, 05, 06 |
 | POST 🔄 | `/funds/{fund_id}/meetings/{meeting_id}/cancel` | 취소 | |
@@ -294,9 +297,9 @@ Idempotency-Key: 7f3c9a2e-…
 
 | 메서드 | 주소 | 설명 | 규칙 |
 |---|---|---|---|
-| GET / POST | `/funds/{fund_id}/reports` | 목록 / 초안 생성 | BR-RPT-01 |
-| GET | `/funds/{fund_id}/reports/{report_id}` | 초안이면 최신 숫자, 발행본이면 스냅샷 | BR-RPT-02 |
-| PATCH | `/funds/{fund_id}/reports/{report_id}` | GP 코멘트 수정 (초안만) | |
+| GET / POST | `/funds/{fund_id}/reports` | 목록 / 초안 생성 `{ "period_type", "year", "period_no" }` | BR-RPT-01, 06 |
+| GET | `/funds/{fund_id}/reports/{report_id}` | 초안이면 기간 종료일 기준 최신 숫자, 발행본이면 스냅샷 + `can_publish` | BR-RPT-02 |
+| PATCH / DELETE | `/funds/{fund_id}/reports/{report_id}` | GP 코멘트 수정 / 초안 삭제 (초안만) | BR-RPT-04 |
 | POST 🔄 | `/funds/{fund_id}/reports/{report_id}/publish` | 발행 (스냅샷 저장 + 통지) | BR-RPT-03, 05 |
 
 ### 3-12. 분배
