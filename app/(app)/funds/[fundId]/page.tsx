@@ -1,13 +1,17 @@
 import Link from "next/link";
+import FundManagersPanel from "@/components/fund-managers-panel";
 import { FundLifecycle, FundStatusBadge } from "@/components/fund-status";
 import { formatDate, formatKRW, formatKRWFull, formatPercent } from "@/lib/format";
 import { FUND_TYPE_LABEL, GP_TYPE_LABEL } from "@/lib/labels";
+import { listFundManagers } from "@/lib/services/fund-managers";
 import { getFund } from "@/lib/services/funds";
+import { listStaff } from "@/lib/services/staff";
 import { loadOrNotFound } from "@/lib/page-helpers";
 
 export default async function FundDetailPage(props: PageProps<"/funds/[fundId]">) {
   const { fundId } = await props.params;
   const fund = await loadOrNotFound(() => getFund(fundId));
+  const [managers, staff] = await Promise.all([listFundManagers(fundId), listStaff("active")]);
   const t = fund.terms;
 
   const basic: [string, React.ReactNode][] = [
@@ -67,6 +71,12 @@ export default async function FundDetailPage(props: PageProps<"/funds/[fundId]">
           rows={terms}
         />
       </div>
+
+      <FundManagersPanel
+        fundId={fund.id}
+        managers={managers}
+        staffOptions={staff.map(({ id, name, position }) => ({ id, name, position }))}
+      />
     </div>
   );
 }
