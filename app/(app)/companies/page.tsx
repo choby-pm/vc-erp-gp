@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DealSectionHeader from "@/components/deal-section-header";
 import { formatKRW } from "@/lib/format";
 import { companyListQuerySchema } from "@/lib/schemas/deal";
 import { listCompanies } from "@/lib/services/companies";
@@ -23,15 +24,15 @@ export default async function CompaniesPage(props: PageProps<"/companies">) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">기업</h1>
-          <p className="mt-1 text-sm text-slate-500">투자를 검토했거나 투자한 기업. 한 기업의 딜 이력과 조합별 투자 현황을 함께 봅니다.</p>
-        </div>
-        <Link href="/companies/new" className="shrink-0 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
-          + 기업 등록
-        </Link>
-      </div>
+      <DealSectionHeader
+        active="companies"
+        description="투자를 검토했거나 투자한 기업. 한 기업의 딜 이력과 조합별 투자 현황을 함께 봅니다."
+        action={
+          <Link href="/companies/new" className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+            + 기업 등록
+          </Link>
+        }
+      />
 
       <form action="/companies" className="flex gap-2">
         <input

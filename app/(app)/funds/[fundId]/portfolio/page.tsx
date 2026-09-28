@@ -20,9 +20,9 @@ export default async function PortfolioPage(props: PageProps<"/funds/[fundId]/po
 
   const cards: [string, string, string?][] = [
     ["투자 기업", `${t.company_count}개`, `보유 중 ${t.holding_count}개`],
-    ["투자 원금", formatKRW(t.invested_amount), formatKRWFull(t.invested_amount)],
-    ["보유 평가액", formatKRW(t.current_value_amount), `남은 원금 ${formatKRW(t.remaining_cost_amount)}`],
-    ["총 가치 배수", multiple(t.total_multiple), "(회수액 + 보유 평가액) ÷ 투자 원금"],
+    ["투자자산 취득원가", formatKRW(t.invested_amount), formatKRWFull(t.invested_amount)],
+    ["투자자산 공정가치", formatKRW(t.current_value_amount), `장부가액(원가) ${formatKRW(t.remaining_cost_amount)}`],
+    ["총 가치 배수 (MOIC)", multiple(t.total_multiple), "(처분대가 + 공정가치) ÷ 취득원가"],
   ];
 
   return (
@@ -39,8 +39,8 @@ export default async function PortfolioPage(props: PageProps<"/funds/[fundId]/po
 
       <section className="rounded-2xl border border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-6 py-4">
-          <h2 className="text-base font-semibold text-slate-900">포트폴리오</h2>
-          <p className="mt-0.5 text-xs text-slate-500">평가액: 평가 기록이 있으면 최신 평가액, 없으면 남은 원금. 전액 회수된 기업은 0원 (BR-VAL-03)</p>
+          <h2 className="text-base font-semibold text-slate-900">투자자산 명세</h2>
+          <p className="mt-0.5 text-xs text-slate-500">공정가치: 평가 기록이 있으면 최신 평가액, 없으면 장부가액(원가). 전액 처분한 기업은 0원 (BR-VAL-03)</p>
         </div>
         {data.items.length === 0 ? (
           <p className="px-6 py-10 text-center text-sm text-slate-500">아직 투자한 기업이 없습니다. 투자 집행 탭에서 투자를 기록하세요.</p>
@@ -51,11 +51,11 @@ export default async function PortfolioPage(props: PageProps<"/funds/[fundId]/po
                 <tr>
                   <th className="px-6 py-2.5">기업</th>
                   <th className="px-3 py-2.5">상태</th>
-                  <th className="px-3 py-2.5 text-right">투자 원금</th>
-                  <th className="px-3 py-2.5 text-right">회수액</th>
-                  <th className="px-3 py-2.5 text-right">남은 원금</th>
-                  <th className="px-3 py-2.5 text-right">평가액</th>
-                  <th className="px-6 py-2.5 text-right">평가 배수</th>
+                  <th className="px-3 py-2.5 text-right">취득원가</th>
+                  <th className="px-3 py-2.5 text-right">처분대가</th>
+                  <th className="px-3 py-2.5 text-right">장부가액</th>
+                  <th className="px-3 py-2.5 text-right">공정가치</th>
+                  <th className="px-6 py-2.5 text-right">공정가치 ÷ 장부가액</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -77,7 +77,7 @@ export default async function PortfolioPage(props: PageProps<"/funds/[fundId]/po
                     <td className="px-3 py-2.5 text-right tabular-nums">{formatKRW(i.remaining_cost_amount)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">
                       {formatKRW(i.current_value_amount)}
-                      <p className="text-[11px] text-slate-400">{i.latest_valuation_date ? `${formatDate(i.latest_valuation_date)} 평가` : "평가 없음 (원금)"}</p>
+                      <p className="text-[11px] text-slate-400">{i.latest_valuation_date ? `${formatDate(i.latest_valuation_date)} 평가` : "평가 없음 (원가)"}</p>
                     </td>
                     <td className={`px-6 py-2.5 text-right tabular-nums ${i.unrealized_multiple !== null && i.unrealized_multiple < 1 ? "text-rose-600" : ""}`}>
                       {multiple(i.unrealized_multiple)}

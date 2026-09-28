@@ -113,7 +113,7 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
         // 규약을 먼저 저장한다. 조합 유형을 바꾸면 기본 정보 저장 때 새 유형 기준으로 1좌 금액을 다시 검사한다
         await send(`/api/v1/funds/${fund.id}/terms/1`, "PUT", terms, "terms.");
         await send(`/api/v1/funds/${fund.id}`, "PATCH", basic, "fund.");
-        router.push(`/funds/${fund.id}`);
+        router.push(`/funds/${fund.id}/profile`);
       } else {
         const created = await send("/api/v1/funds", "POST", { fund: basic, terms }, "");
         router.push(`/funds/${created.id}`);

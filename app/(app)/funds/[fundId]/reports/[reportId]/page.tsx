@@ -15,20 +15,21 @@ export default async function ReportDetailPage(props: PageProps<"/funds/[fundId]
 
   const cards: [string, string, string?][] = [
     ["약정 총액", formatKRW(s.commitment_amount), formatKRWFull(s.commitment_amount)],
-    ["누적 납입", formatKRW(s.paid_amount), `납입률 ${formatPercent(s.paid_ratio, 1)}`],
-    ["누적 투자", formatKRW(s.invested_amount), `투자 잔액 ${formatKRW(s.invested_balance_amount)}`],
-    ["보유 평가액", formatKRW(s.current_value_amount), `기업 ${r.snapshot.portfolio.filter((p) => p.status !== "exited").length}개`],
-    ["누적 회수", formatKRW(s.proceeds_amount)],
-    ["누적 분배", formatKRW(s.distributed_amount)],
-    ["누적 관리보수", formatKRW(s.fee_amount)],
-    ["TVPI", s.tvpi === null ? "-" : `${s.tvpi.toFixed(2)}x`, "(분배 + 평가액 + 현금) ÷ 납입"],
+    ["납입 출자금", formatKRW(s.paid_amount), `납입률 ${formatPercent(s.paid_ratio, 1)}`],
+    ["투자자산 취득 누계", formatKRW(s.invested_amount), `장부가액(원가) ${formatKRW(s.invested_balance_amount)}`],
+    ["투자자산 공정가치", formatKRW(s.current_value_amount), `기업 ${r.snapshot.portfolio.filter((p) => p.status !== "exited").length}개`],
+    ["투자자산 처분대가 누계", formatKRW(s.proceeds_amount)],
+    ["분배금 누계", formatKRW(s.distributed_amount)],
+    ["관리보수 누계", formatKRW(s.fee_amount)],
+    ["TVPI", s.tvpi === null ? "-" : `${s.tvpi.toFixed(2)}x`, "(분배금 + 공정가치 + 현금) ÷ 납입 출자금"],
   ];
   const flows: [string, number][] = [
-    ["납입", f.paid_amount],
-    ["투자", f.invested_amount],
-    ["회수", f.proceeds_amount],
-    ["분배", f.distributed_amount],
-    ["관리보수", f.fee_amount],
+    ["출자금 납입", f.paid_amount],
+    ["투자자산 취득", f.invested_amount],
+    ["투자자산 처분대가", f.proceeds_amount],
+    ["분배금 지급", f.distributed_amount],
+    ["관리보수 지급", f.fee_amount],
+    ["기타 비용", f.expense_amount ?? 0], // D34 이전에 발행된 스냅샷에는 없다
   ];
 
   return (
@@ -77,7 +78,7 @@ export default async function ReportDetailPage(props: PageProps<"/funds/[fundId]
               </div>
             ))}
             <div className="flex justify-between py-2">
-              <dt className="text-slate-500">현금 잔액 (기준일)</dt>
+              <dt className="text-slate-500">현금및현금성자산 (기준일)</dt>
               <dd className="tabular-nums">{formatKRW(s.cash_amount)}</dd>
             </div>
             <div className="flex justify-between py-2">
@@ -97,8 +98,8 @@ export default async function ReportDetailPage(props: PageProps<"/funds/[fundId]
                 <tr>
                   <th className="py-2">기업</th>
                   <th className="py-2">상태</th>
-                  <th className="py-2 text-right">투자액</th>
-                  <th className="py-2 text-right">평가액</th>
+                  <th className="py-2 text-right">취득원가</th>
+                  <th className="py-2 text-right">공정가치</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">

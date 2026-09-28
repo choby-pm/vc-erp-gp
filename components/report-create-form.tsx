@@ -5,19 +5,23 @@ import { useState } from "react";
 
 // 정기 보고 초안 만들기: 주기·연도·기간을 고르면 기간 시작·종료일이 정해진다
 
-type PeriodType = "quarterly" | "semiannual" | "annual";
+type PeriodType = "monthly" | "quarterly" | "semiannual" | "annual";
+type Period = { year: number; no: number };
 
 const OPTIONS: Record<PeriodType, { label: string; count: number; name: (n: number) => string }> = {
+  monthly: { label: "월간", count: 12, name: (n) => `${n}월` },
   quarterly: { label: "분기", count: 4, name: (n) => `${n}분기` },
   semiannual: { label: "반기", count: 2, name: (n) => (n === 1 ? "상반기" : "하반기") },
   annual: { label: "연간", count: 1, name: () => "연간" },
 };
 
-export default function ReportCreateForm({ fundId, defaultYear, defaultQuarter }: { fundId: string; defaultYear: number; defaultQuarter: number }) {
+// defaults: 주기별 기본 선택 (직전 분기·직전 달). 주기를 바꾸면 그 주기의 기본 기간으로 맞춘다
+export default function ReportCreateForm({ fundId, defaults }: { fundId: string; defaults: { quarterly: Period; monthly: Period } }) {
+  const defaultYear = defaults.quarterly.year;
   const router = useRouter();
   const [type, setType] = useState<PeriodType>("quarterly");
   const [year, setYear] = useState(defaultYear);
-  const [no, setNo] = useState(defaultQuarter);
+  const [no, setNo] = useState(defaults.quarterly.no);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -53,7 +57,9 @@ export default function ReportCreateForm({ fundId, defaultYear, defaultQuarter }
             onChange={(e) => {
               const t = e.target.value as PeriodType;
               setType(t);
-              setNo((n) => Math.min(n, OPTIONS[t].count));
+              const d = t === "monthly" ? defaults.monthly : t === "quarterly" ? defaults.quarterly : { year, no: 1 };
+              setYear(d.year);
+              setNo(d.no);
             }}
             className={select}
           >

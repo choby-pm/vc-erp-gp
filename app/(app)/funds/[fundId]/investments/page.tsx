@@ -11,9 +11,9 @@ export default async function InvestmentsPage(props: PageProps<"/funds/[fundId]/
   const operating = summary.fund_status === "operating";
 
   const cards: [string, number, string][] = [
-    ["투자 가능 잔액", summary.investable_amount, "약정 − 투자 − 관리보수"],
-    ["현금 잔액", summary.cash_amount, "납입 + 회수 − 투자 − 관리보수 − 분배"],
-    ["누적 투자", summary.total_invested_amount, `${investments.length}건`],
+    ["투자 가능 잔액", summary.investable_amount, "약정 − 투자 − 관리보수 − 기타 비용"],
+    ["현금및현금성자산", summary.cash_amount, "투자 집행에 쓸 수 있는 현금"],
+    ["투자자산 취득 누계", summary.total_invested_amount, `${investments.length}건`],
     ["약정 총액", summary.total_commitment_amount, summary.investment_period_end_date ? `투자 기간 ~${formatDate(summary.investment_period_end_date)}` : "결성 전"],
   ];
 

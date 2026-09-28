@@ -1,6 +1,8 @@
 import { sql } from "@/lib/db";
 import { AppError, assertUuid, notFound } from "@/lib/api/errors";
+import { journalForContribution, journalForDistribution } from "@/lib/services/accounting";
 import { recordEvent } from "@/lib/services/events";
+import { availableCashOn } from "@/lib/services/finance";
 
 // 원장 조회 (05 API 설계 3-5). 원장은 추가만 가능하고, 정정은 취소 행(음수)으로 남는다 (BR-LED-01, 02)
 
@@ -53,6 +55,7 @@ export async function addLedgerEntry(
     memo?: string | null;
     created_by: string;
   },
+  options: { journal?: boolean } = {}, // 분배 지급은 분배 문서 단위로 한 번에 분개하므로 false (D37)
 ) {
   const { lp_id, ...row } = entry;
   const [created] = await tx<{ id: string }[]>`
@@ -75,6 +78,15 @@ export async function addLedgerEntry(
         reversal_of_id: entry.reversal_of_id ?? null,
       },
     });
+  }
+  // 회계 (D35): 돈이 실제로 움직인 납입·분배는 같은 트랜잭션에서 분개한다. 약정은 재무상태표 밖(주석)이라 분개하지 않는다
+  if (entry.entry_type !== "commitment" && options.journal !== false) {
+    const [m] = await tx<{ name: string }[]>`
+      select coalesce(lp.name, 'GP') as name from fund_members fm left join limited_partners lp on lp.id = fm.lp_id where fm.id = ${entry.member_id}
+    `;
+    const journal = { fund_id: entry.fund_id, ledger_id: created.id, amount: entry.amount, entry_date: entry.entry_date, member_name: m.name, created_by: entry.created_by };
+    if (entry.entry_type === "contribution") await journalForContribution(tx, journal);
+    else await journalForDistribution(tx, journal);
   }
   return created.id;
 }
@@ -101,13 +113,13 @@ export async function reverseLedgerEntry(fundId: string, entryId: string, memo: 
     const [done] = await tx`select 1 from ledger_entries where reversal_of_id = ${entryId}`;
     if (done) throw new AppError(409, "ALREADY_REVERSED", "이미 취소된 기록입니다", "BR-LED-02");
 
-    // 납입을 취소하면 현금이 줄어든다. 이미 투자·관리보수로 쓴 돈이면 취소할 수 없다
-    const [{ cash_amount }] = await tx<{ cash_amount: number }[]>`select cash_amount from v_fund_summary where fund_id = ${fundId}`;
-    if (cash_amount < entry.amount) {
-      throw new AppError(422, "INSUFFICIENT_CASH", "취소하면 현금 잔액이 음수가 됩니다. 이미 사용한 납입금입니다", "BR-LED-02", { cash_amount });
+    // 납입을 취소하면 현금이 줄어든다. 이미 투자·관리보수로 쓴 돈이면 취소할 수 없다 (취소 행은 오늘 날짜, BR-FIN-02)
+    const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+    const available = await availableCashOn(t, fundId, today);
+    if (available < entry.amount) {
+      throw new AppError(422, "INSUFFICIENT_CASH", "취소하면 현금 잔액이 음수가 됩니다. 이미 사용한 납입금입니다", "BR-LED-02", { available_amount: available });
     }
 
-    const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
     return addLedgerEntry(t, {
       fund_id: fundId,
       member_id: entry.member_id,

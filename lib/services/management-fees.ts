@@ -1,7 +1,9 @@
 import { sql } from "@/lib/db";
 import { AppError, assertUuid, notFound, statusNotAllowed } from "@/lib/api/errors";
-import { formatDate, formatKRWFull } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import type { FundStatus } from "@/lib/labels";
+import { journalForManagementFee } from "@/lib/services/accounting";
+import { assertCashAvailable } from "@/lib/services/finance";
 
 // 관리보수 서비스 (BR-FEE-01~07, D16 ⚠️)
 // · 분기 단위로 청구한다. 결성일·만기일(해산했으면 해산일)에 걸친 분기는 그 날짜로 자른다
@@ -186,19 +188,20 @@ export async function chargeManagementFee(fundId: string, year: number, quarter:
       throw new AppError(422, "INVALID_DATE", message, "BR-FEE-02", { fields: { charged_date: message } });
     }
     // BR-FEE-06: 현금이 부족하면 캐피탈콜로 먼저 자금을 확보해야 한다
-    if (!preview.enough_cash) {
-      throw new AppError(422, "INSUFFICIENT_CASH", `현금 잔액(${formatKRWFull(preview.cash_amount)})이 부족합니다. 캐피탈콜로 먼저 자금을 확보하세요`, "BR-FEE-06", {
-        cash_amount: preview.cash_amount,
-        fee_amount: preview.total_fee_amount,
-      });
-    }
+    // BR-FEE-06 + BR-FIN-02: 청구일 기준 현금 (그 뒤 어느 날의 잔액도 음수가 되면 안 된다)
+    await assertCashAvailable(t, fundId, chargedDate, preview.total_fee_amount, "BR-FEE-06");
     if (preview.total_fee_amount === 0) throw new AppError(422, "ZERO_FEE", "청구할 관리보수가 0원입니다 (기준 금액이 없습니다)", "BR-FEE-05");
 
     for (const s of preview.segments) {
-      await tx`
+      const [charge] = await tx<{ id: string }[]>`
         insert into management_fee_charges (fund_id, period_start, period_end, fee_basis, basis_amount, fee_rate, fee_amount, charged_date, created_by)
         values (${fundId}, ${s.period_start}, ${s.period_end}, ${s.fee_basis}, ${s.basis_amount}, ${s.fee_rate.toFixed(6)}, ${s.fee_amount}, ${chargedDate}, ${userId})
+        returning id
       `;
+      // 회계 (D35): 관리보수 / 현금 (0원 구간은 분개하지 않는다)
+      if (s.fee_amount > 0) {
+        await journalForManagementFee(t, { fund_id: fundId, charge_id: charge.id, amount: s.fee_amount, date: chargedDate, period: `${formatDate(s.period_start)} ~ ${formatDate(s.period_end)}`, created_by: userId });
+      }
     }
     return preview;
   });

@@ -7,14 +7,15 @@ export default async function ReportsPage(props: PageProps<"/funds/[fundId]/repo
   const { fundId } = await props.params;
   const data = await listReports(fundId);
   const kst = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
-  // 기본 선택: 직전 분기 (보통 분기가 끝난 뒤 보고한다)
+  // 기본 선택: 직전 분기·직전 달 (보통 기간이 끝난 뒤 보고한다)
   const q = Math.floor(kst.getMonth() / 3) + 1;
-  const [defaultYear, defaultQuarter] = q === 1 ? [kst.getFullYear() - 1, 4] : [kst.getFullYear(), q - 1];
+  const quarterly = q === 1 ? { year: kst.getFullYear() - 1, no: 4 } : { year: kst.getFullYear(), no: q - 1 };
+  const monthly = kst.getMonth() === 0 ? { year: kst.getFullYear() - 1, no: 12 } : { year: kst.getFullYear(), no: kst.getMonth() };
 
   return (
     <div className="space-y-6">
       {data.can_create ? (
-        <ReportCreateForm fundId={fundId} defaultYear={defaultYear} defaultQuarter={defaultQuarter} />
+        <ReportCreateForm fundId={fundId} defaults={{ quarterly, monthly }} />
       ) : (
         <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">정기 보고는 조합을 결성한 뒤에 작성할 수 있습니다.</p>
       )}

@@ -10,7 +10,7 @@ import { SIDEBAR_FOLDED_COOKIE } from "@/lib/ui-prefs";
 // · 넓은 화면: 왼쪽 고정. 로고 옆 버튼으로 접으면 아이콘만 보이는 좁은 폭이 된다 (쿠키에 기억 → 새로고침해도 유지, 깜빡임 없음)
 // · 좁은 화면: ☰ 버튼으로 여닫는다
 
-type Item = { href: string; label: string; icon: React.ReactNode };
+type Item = { href: string; label: string; icon: React.ReactNode; also?: string[] }; // also: 같은 메뉴로 보는 다른 경로
 
 const icon = (d: string) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0" aria-hidden>
@@ -26,8 +26,7 @@ const SECTIONS: { title: string; items: Item[] }[] = [
     title: "조합 운용",
     items: [
       { href: "/funds", label: "조합", icon: icon("M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6") },
-      { href: "/deals", label: "딜 파이프라인", icon: icon("M4 5h4v14H4zM10 5h4v9h-4zM16 5h4v5h-4z") },
-      { href: "/companies", label: "기업", icon: icon("M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M15 9h4a1 1 0 0 1 1 1v11M8 8h3M8 12h3M8 16h3M3 21h18") },
+      { href: "/deals", label: "딜·기업", icon: icon("M4 5h4v14H4zM10 5h4v9h-4zM16 5h4v5h-4z"), also: ["/companies"] },
     ],
   },
   {
@@ -61,7 +60,7 @@ export default function AppSidebar({ userName, initialFolded }: { userName: stri
           )}
           <ul className={`space-y-0.5 ${compact ? "" : "mt-2"}`}>
             {section.items.map((item) => {
-              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+              const active = [item.href, ...(item.also ?? [])].some((h) => pathname === h || pathname.startsWith(`${h}/`));
               return (
                 <li key={item.href}>
                   <Link

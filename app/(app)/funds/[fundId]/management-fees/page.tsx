@@ -16,7 +16,7 @@ export default async function ManagementFeesPage(props: PageProps<"/funds/[fundI
 
   const summary: [string, string, string?][] = [
     ["누적 관리보수", formatKRW(data.total_fee_amount), formatKRWFull(data.total_fee_amount)],
-    ["현금 잔액", formatKRW(data.cash_amount), formatKRWFull(data.cash_amount)],
+    ["현금및현금성자산", formatKRW(data.cash_amount), formatKRWFull(data.cash_amount)],
     ["결성일", data.formation_date ? formatDate(data.formation_date) : "결성 전"],
     ["투자 기간 종료일", data.investment_period_end_date ? formatDate(data.investment_period_end_date) : "-"],
   ];

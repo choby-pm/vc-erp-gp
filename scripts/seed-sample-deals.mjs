@@ -163,7 +163,9 @@ try {
   for (const [i, d] of deals.filter((x) => x.toTarget).entries()) {
     const amount = floorTo(budget * shares[i], 10_000_000);
     const price = pick([5_000, 12_000, 25_000, 48_000]);
-    const date = addDays(completed, i + 1) > TODAY ? TODAY : addDays(completed, i + 1);
+    // 투자일은 2차 캐피탈콜 납입일 이후 (그 전에는 현금이 없다, BR-FIN-02)
+    const paidDate = addDays(callDate, 1) > TODAY ? TODAY : addDays(callDate, 1);
+    const date = addDays(paidDate, i) > TODAY ? TODAY : addDays(paidDate, i);
     await investments.executeInvestment(F, {
       is_follow_on: false, deal_id: d.id, company_id: null, investment_date: date, investment_amount: amount,
       security_type: pick(['rcps', 'rcps', 'common', 'cb']), shares: Math.floor(amount / price), price_per_share: price, is_primary_purpose: i !== 2,

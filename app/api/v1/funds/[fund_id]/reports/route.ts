@@ -6,9 +6,9 @@ import { createReport, getReport, listReports } from "@/lib/services/reports";
 type Ctx = RouteContext<"/api/v1/funds/[fund_id]/reports">;
 
 const createSchema = z.object({
-  period_type: z.enum(["quarterly", "semiannual", "annual"], { error: "보고 주기를 선택하세요" }),
+  period_type: z.enum(["monthly", "quarterly", "semiannual", "annual"], { error: "보고 주기를 선택하세요" }),
   year: z.number({ error: "연도를 입력하세요" }).int().min(2000).max(2100),
-  period_no: z.number({ error: "기간을 선택하세요" }).int().min(1).max(4),
+  period_no: z.number({ error: "기간을 선택하세요" }).int().min(1).max(12),
   gp_comment: z.string().trim().max(5000).nullish().transform((v) => (v ? v : null)),
 });
 

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import FundTabs from "@/components/fund-tabs";
 import { FundStatusBadge } from "@/components/fund-status";
 import { FUND_TYPE_LABEL } from "@/lib/labels";
@@ -22,11 +23,14 @@ export default async function FundLayout({ children, params }: LayoutProps<"/fun
           <span className="text-sm text-slate-500">{FUND_TYPE_LABEL[fund.fund_type]}</span>
           {fund.editable && (
             <Link href={`/funds/${fund.id}/edit`} className="ml-auto rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-              조합 정보 수정
+              기본 정보·규약 수정
             </Link>
           )}
         </div>
-        <FundTabs fundId={fund.id} formed={fund.formation_date !== null} />
+        {/* 탭이 주소의 ?view= 를 읽으므로 Suspense 로 감싼다 */}
+        <Suspense fallback={<div className="h-20 border-b border-slate-200" />}>
+          <FundTabs fundId={fund.id} formed={fund.formation_date !== null} />
+        </Suspense>
       </div>
       {children}
     </div>
