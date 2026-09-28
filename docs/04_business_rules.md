@@ -46,6 +46,8 @@ planning ──① → fundraising ──② → formed ──③ → operating 
 | ④ 운용 → 해산 | BR-FUND-04 | 해산총회의 해산 안건 **가결** | `dissolution_date` = 해산총회일, 이벤트 |
 | ⑤ 해산 → 청산 | BR-FUND-05 | 보유 기업 전부 회수(남은 원금 0) · 최종 분배 `paid` · 현금 잔액 0 · 미마감 캐피탈콜 없음 | `liquidation_date`, 이벤트 |
 
+- **BR-FUND-02·03 구현 세부** (R2-4): 결성 조건의 최소 결성액은 원장의 약정 합계로 검사한다. 최소 결성액 기준이 없는 조합 유형(신기술사업투자조합)은 검사하지 않고 체크리스트에 그 사실을 표시한다. 결성하면 결성일 = 결성 안건이 가결된 결성총회일, 규약 버전 1 적용일도 결성일로 바꾼다. 등록 정보는 결성 완료 상태에서만 입력·수정하며 (신청일 ≥ 결성일, 완료일 ≥ 신청일, 완료일 ≤ 오늘), 운용을 시작하면 잠긴다.
+- **BR-INST-01 관계 기관**: 수탁은행·사무관리사·회계감사인은 조합당 종류별 1곳 (`DUPLICATE_INSTITUTION`). 청산 전까지 등록·수정·삭제할 수 있다.
 - **BR-FUND-06 역방향 금지**: 상태는 앞으로만 이동한다. 잘못 이동했다면 되돌리는 대신 관리자 정정 기능(고도화)으로 처리한다.
 - **BR-FUND-07 존속 기간 경과 경고**: 만기일이 지났는데 `operating` 이면 대시보드에 경고를 표시한다 (차단은 하지 않음. 실무에서는 총회로 기간을 연장하기도 한다 ⚠️).
 
@@ -111,6 +113,13 @@ planning ──① → fundraising ──② → formed ──③ → operating 
 - **BR-PROP-02 확약 금액**: `committed` 로 바꿀 때 `loc_amount > 0` 이 필수다.
 - **BR-PROP-03 발송**: 제안을 발송하면 `proposal` 통지가 해당 LP 한 곳을 수신자로 만들어진다. 조합 상태가 `fundraising` 일 때만 가능하다.
 - **BR-PROP-04 모집 달성률**: `committed` 제안의 확약 금액 합 ÷ 목표 결성액. 100%를 넘어도 막지 않는다 (초과 결성 가능).
+- **BR-PROP-05 제안 1건**: 한 조합에서 한 출자자에게는 제안 1건만 만든다 (`DUPLICATE_PROPOSAL`, 기존 제안을 함께 알려준다). 제안 작성·수정·단계 이동은 기획·모집 중에만 할 수 있다.
+- **BR-PROP-06 단계 이동 세부** (R1-5 구현):
+  - 검토 중을 거치지 않고 `proposed → committed / declined` 로 바로 갈 수 있다 (오프라인으로 바로 회신받는 경우).
+  - 확약·거절할 때 결정일(`decided_date`)을 남긴다. 기본값은 오늘, 제안일 이후여야 한다 (`INVALID_DATE`).
+  - 확약 금액(`loc_amount`)은 확약 상태에서만 입력·수정한다. 비울 수 없다 (`LOC_AMOUNT_REQUIRED`).
+  - 거절된 제안은 수정할 수 없다 (`PROPOSAL_CLOSED`).
+- **BR-PROP-07 발송 세부**: `proposed`, `reviewing` 인 제안만 발송할 수 있다 (`PROPOSAL_CLOSED`). 제안서를 고쳐 다시 보낼 수 있도록 **재발송을 허용**하며, 매번 새 통지를 만든다 (BR-NTC-01). 통지 본문에는 조합 조건과 제안 금액만 넣고 내부 메모는 넣지 않는다. 발송과 같은 트랜잭션에서 `notice.sent` 이벤트를 해당 LP 대상으로 만든다.
 
 ### 3-2. 조합원 명부 확정
 
@@ -121,7 +130,12 @@ planning ──① → fundraising ──② → formed ──③ → operating 
 - **BR-MEM-03 GP 의무 출자 비율**: GP 약정액 ÷ 약정 총액 ≥ `gp_commitment_min_ratio`. 미달이면 확정 불가 (`GP_COMMITMENT_BELOW_MIN`).
 - **BR-MEM-04 확정 시 함께 저장**: 조합원(`fund_members`) 생성 + 조합원별 `commitment` 원장 행 (`source_type = 'formation'`) + 연동 이벤트
 - **BR-MEM-05 확정 후 변경**: 결성총회 가결 전까지는 명부를 취소하고 다시 확정할 수 있다 (원장은 취소 행으로 처리). 결성 이후에는 변경 불가.
+  - 취소에는 사유가 필요하다. 결성 안건이 가결됐거나 캐피탈콜이 하나라도 있으면(초안 포함) 취소할 수 없다 (`ROSTER_LOCKED`).
+  - 명부가 확정된 동안에는 규약 버전 1을 바꿀 수 없다 (`ROSTER_CONFIRMED`). 1좌 금액·GP 의무 출자 비율 검사가 깨지지 않게 하기 위해서다.
+  - 확약된 제안이라도 명부에서 뺄 수 있다 (확약 후 철회한 LP). LP 조합원은 1명 이상이어야 한다.
+  - GP 조합원의 원장 행은 알릴 LP가 없어 연동 이벤트를 만들지 않는다.
 - **BR-MEM-06 약정 증액** ⚠️: 결성 이후 약정 증액은 **가결된 규약 변경 안건**이 있을 때만 가능하고, `commitment` 원장 행을 추가한다 (`source_type = 'terms_amendment'`). 감액·신규 조합원 가입·지분 양도는 고도화 단계.
+  - (R5-1 구현) 증액일은 총회일 ~ 오늘, 1좌 배수는 증액일에 적용되는 규약 기준, 증액 후에도 GP 의무 출자 비율을 지켜야 한다 (`GP_COMMITMENT_BELOW_MIN` → GP 약정도 함께 늘린다). 원장의 원인 문서는 근거 안건. 한 안건으로 여러 조합원을 증액할 수 있고, 같은 안건으로 규약 새 버전도 만들 수 있다. `Idempotency-Key` 필수.
 - **BR-MEM-07 1좌 단위**: 조합원 약정액은 1좌 금액의 배수여야 한다 (`COMMITMENT_NOT_UNIT_MULTIPLE`). 명부 확정과 약정 증액 때 검사한다 (R2).
 
 ### 3-3. 규약 (버전 관리)
@@ -131,6 +145,7 @@ planning ──① → fundraising ──② → formed ──③ → operating 
 - **BR-TERM-03**: 새 버전의 적용일은 해당 총회일 이후여야 한다.
 - **BR-TERM-04**: 어떤 날짜에 적용되는 규약 = 적용일이 그 날짜 이전인 버전 중 가장 최신 버전. 모든 계산(관리보수, 분배, 가결 기준)은 이 규칙으로 규약을 찾는다.
 - **BR-TERM-05 1좌 금액**: 개인투자조합은 1좌 금액 100만 원 이상 (`INVALID_UNIT_AMOUNT`). 조합 유형을 바꿀 때도 다시 검사한다.
+- **BR-TERM-06 구현 세부** (R5-1): 새 버전은 결성·운용 중에만 만든다. 적용일은 총회일 이후이면서 직전 버전의 적용일 이후여야 한다 (버전 순서와 적용일 순서를 일치시켜 BR-TERM-04 조회가 흔들리지 않게). 같은 안건으로 두 번째 버전은 `AGENDA_ALREADY_USED`. 새 버전을 만들면 `fund.terms_updated` 이벤트를 남긴다. 조합 개요는 오늘 적용 중인 버전을 보여주고, 적용일이 아직 오지 않은 버전이 있으면 함께 알린다. 총회 가결 기준(BR-VOTE-04)도 오늘 적용 중인 버전에서 복사한다.
 
 ### 3-4. 최소 결성 기준 (D29)
 
@@ -179,6 +194,7 @@ planning ──① → fundraising ──② → formed ──③ → operating 
   - 0 < 납입액 < 요청액 → `partial`
   - 납입액 = 0, 오늘 ≤ 기한 → `pending`
   - 납입액 < 요청액, 오늘 > 기한 → `overdue`
+- **BR-CALL-13 구현 세부** (R2-3): 최초 납입 여부(`is_initial`)는 입력받지 않고 조합 상태로 정한다 (모집 중 = 최초 납입). 결성 전에는 초안 포함 1건만 만들 수 있다. 배분은 반올림된 지분율이 아니라 약정액 비율로 원 단위까지 정확히 계산한다. 나머지 1원의 동률 기준은 가입일 → 같은 명부로 함께 가입했으면 GP → ID 순. 발송 때 잔여 약정을 다시 확인한다 (그 사이 다른 요청이 발송됐을 수 있음). 통지는 LP마다 따로 만들어 자기 요청액만 보이게 한다.
 - **BR-CALL-12 마감**: `issued → closed`. 모든 항목이 `paid` 이면 자동 마감한다. 미납이 남아도 GP가 수동으로 마감할 수 있으며, 마감 후에도 미납 조합원의 납입은 기록할 수 있다.
 - **BR-CALL-13 미납 조합원 제재** ⚠️: 연체이자, 지분 몰수 등은 규약마다 달라 MVP에서는 **미납 표시와 대시보드 경고만** 한다.
 
@@ -200,6 +216,12 @@ sourcing → reviewing → ic → approved
 - **BR-DEAL-03 드롭 사유 필수**: `dropped` 로 바꿀 때 `drop_reason` 필수
 - **BR-DEAL-04 투자 확정 조건**: `approved` 로 바꿀 때 투자 예정 조합과 예상 금액이 필수다.
 - **BR-DEAL-05 이력 기록**: 단계가 바뀔 때마다 `deal_stage_history` 에 한 행을 추가한다.
+- **BR-DEAL-07 투심위 상정 조건** (2026-09-28 추가): 검토 → 투심위로 옮기려면 **딜 메모 1건 이상**과 **예상 투자 금액**이 있어야 한다 (`IC_REQUIREMENTS`). 금액은 이동 요청에서 함께 정할 수 있다. 투심위 → 검토 → 투심위로 다시 올릴 때도 같은 조건을 검사한다. 딜 보드에서는 메모가 없으면 알림 창으로 안내하고, 금액만 없으면 입력 창을 띄운다.
+- **BR-DEAL-06 구현 세부** (R4-1):
+  - 투자 예정 조합은 기획·모집·결성·운용 상태의 조합만 고를 수 있다. 투자 확정 때 조합·금액을 함께 넣을 수 있다 (`APPROVAL_REQUIREMENTS`).
+  - 종료된 딜(투자 확정·드롭)은 정보를 고치거나 단계를 옮길 수 없다 (`DEAL_CLOSED`). 메모는 사후에도 남길 수 있다. 메모에는 작성 시점의 단계가 함께 기록된다.
+  - 담당자는 사용 중인 로그인 계정 중에서 고른다 (`deals.owner_id → users`).
+  - 기업 사업자등록번호는 출자자와 같은 형식으로 저장하고 중복 등록을 막는다 (`DUPLICATE_REGISTRATION_NO`).
 
 ### 5-2. 투자 집행
 
@@ -214,6 +236,13 @@ sourcing → reviewing → ic → approved
   - 🟡 주의: 투자 기간이 1년 이내로 남았는데 비율 < 의무 비율
   - 🔴 미달: 투자 기간이 끝났는데 비율 < 의무 비율
   - ⚠️ 주목적 비율의 분모(약정 총액 vs 투자 총액)와 산정 시점은 조합마다 다를 수 있음
+- **BR-INV-07 구현 세부** (R4-2):
+  - 신규 투자의 딜은 **이 조합을 투자 예정 조합으로 확정한 딜**이어야 한다 (`DEAL_NOT_APPROVED`). 같은 딜로 두 번째 신규 투자는 막는다 (`DEAL_ALREADY_INVESTED`) — 추가 투자는 후속 투자로 기록한다.
+  - 투자 기간 = 결성일 ~ 투자 기간 종료일 전날 (관리보수와 같은 기준). 기간 밖 신규 투자는 `OUTSIDE_INVESTMENT_PERIOD`.
+  - 후속 투자 대상은 남은 원금이 있는 보유 기업 (`NOT_A_HOLDING`).
+  - 투자 기록은 수정·삭제하지 않는다 (정정 기능은 고도화). 돈이 움직이므로 `Idempotency-Key` 필수.
+  - 주목적 비율 경고는 투자 집행 응답·투자 집행 탭·조합 개요에 함께 표시한다. 의무 비율은 오늘 적용되는 규약 버전 기준.
+- **BR-VAL-04 구현 세부** (R4-3): 평가는 운용·해산 상태에서만 기록한다. 평가 기준일은 첫 투자일 ~ 오늘 (`INVALID_DATE`), 같은 기준일 중복은 `DUPLICATE_VALUATION`, 투자하지 않은 기업은 `NOT_A_HOLDING`, 전액 회수된 기업은 `VALUATION_NOT_ALLOWED`. 포트폴리오의 총 가치 배수 = (회수액 + 보유 평가액) ÷ 투자 원금.
 
 ### 5-3. 기업가치 평가
 
@@ -237,6 +266,11 @@ sourcing → reviewing → ic → approved
 - **BR-FEE-05 계산식**: `보수 = 기준 금액 × 요율 × 기간 일수 ÷ 365` 에서 원 미만 버림. 계산에 쓴 기준 금액, 요율, 기간을 모두 행에 저장한다 (03 설계 의도).
 - **BR-FEE-06 현금 확인**: 보수 ≤ 현금 잔액 (`INSUFFICIENT_CASH`)
 - **BR-FEE-07 규약 적용**: 요율은 기간 시작일에 적용되는 규약 버전에서 가져온다 (BR-TERM-04).
+- **BR-FEE-08 구현 세부** (R3):
+  - 청구는 `{ 연도, 분기 }` 로 받는다. 결성일이나 만기일(해산했으면 해산일)에 걸친 분기는 그 날짜로 자른다. 존속 기간은 만기일 전날까지로 본다.
+  - 투자 기간 = 결성일 ~ 투자 기간 종료일 전날. 종료일이 분기 안에 있으면 두 행으로 나누고, 행마다 그 구간 시작일의 기준 금액·요율을 쓴다. 일수는 양 끝 포함.
+  - 아직 시작하지 않은 분기는 청구할 수 없다 (`INVALID_PERIOD`). 청구일은 기간 시작일 ~ 오늘 (`INVALID_DATE`). 보수가 0원이면 청구하지 않는다 (`ZERO_FEE`).
+  - 결성·운용·해산 상태에서 청구할 수 있다. 청구 기록은 수정·삭제하지 않는다 (정정 기능은 고도화).
 
 ---
 
@@ -260,6 +294,13 @@ sourcing → reviewing → ic → approved
   | `report_approval`, `other` | 상태 변화 없음, 기록만 |
 
 - **BR-MTG-03 소집 통지**: 총회를 만들고 소집하면 `meeting` 통지가 LP 조합원 전원에게 만들어진다.
+- **BR-MTG-04 진행 순서** (R2-2 구현): 생성 → 소집 통지 → 투표 입력 → 개최 처리.
+  - 소집 통지를 보낸 뒤에는 일정·안건을 바꿀 수 없다 (`DOCUMENT_LOCKED`). 바꾸려면 총회를 취소하고 새로 연다.
+  - 투표는 소집 후에만 입력한다 (`MEETING_NOT_CONVENED`). 개최 처리는 총회일 당일 이후에만 할 수 있다 (`INVALID_DATE`).
+  - 결성총회는 한 번에 하나만 예정할 수 있다 (`MEETING_ALREADY_SCHEDULED`). 결성 안건이 부결되면 새 결성총회를 열 수 있고, 가결된 뒤에는 열 수 없다 (`FORMATION_ALREADY_PASSED`).
+  - 결성 안건은 결성총회에서만, 해산 안건은 해산총회에서만 다룬다 (`AGENDA_NOT_ALLOWED`).
+  - 결성총회가 예정된 동안에는 명부를 취소할 수 없다 (의결권이 명부 기준이므로).
+  - 가결 판정의 분모(전체 의결권)는 개최 처리 시점 조합원 지분율의 합이다. 지분율 반올림 때문에 합이 정확히 1이 아닐 수 있어, 1 대신 실제 합을 쓴다 (만장일치 기준이 반올림으로 깨지지 않게).
 
 ---
 
@@ -270,6 +311,11 @@ sourcing → reviewing → ic → approved
 - **BR-RPT-03 발행**: `published` 로 바꾸는 순간 보고 기간 종료일 기준 숫자를 `snapshot` 에 얼려 저장하고 잠근다. `report` 통지가 LP 조합원 전원에게 만들어진다.
 - **BR-RPT-04 정정**: 발행된 보고서는 고칠 수 없다. 정정 보고서를 새로 발행한다.
 - **BR-RPT-05 스냅샷 내용**: 약정 총액, 누적 납입, 누적 투자, 투자 잔액, 평가액 합계, 누적 회수, 누적 분배, 누적 관리보수, 주목적 투자 비율, 포트폴리오 기업별 요약(기업명, 투자액, 평가액, 상태)
+- **BR-RPT-06 구현 세부** (R5-2):
+  - 기간은 `{ 분기·반기·연간, 연도, 순번 }` 으로 정한다. 결성일 이전에 끝나는 기간은 보고할 수 없다 (`INVALID_PERIOD`). 같은 기간 초안은 1개 (`REPORT_DRAFT_EXISTS`).
+  - 모든 숫자는 **기간 종료일 기준**으로 계산한다: 원장·투자·회수는 그날까지의 기록, 평가는 그날 이전 최신 평가, 관리보수는 청구일 기준. 스냅샷에는 기간 중 변동(납입·투자·회수·분배·관리보수), 현금 잔액, TVPI(분배 + 평가액 + 현금) ÷ 납입도 함께 넣는다.
+  - 기간이 끝나기 전에는 발행할 수 없다 (`REPORT_PERIOD_NOT_ENDED`) — 끝나지 않은 기간의 숫자를 고정하지 않기 위해서.
+  - 발행하면 LP 조합원 전원에게 `report` 통지 1건(수신자 여러 명)과 LP별 `notice.sent` 이벤트를 만든다. 같은 기간을 다시 발행하면 제목에 [정정]을 붙인다. 초안은 삭제할 수 있고 발행본은 삭제·수정할 수 없다 (`DOCUMENT_LOCKED`).
 
 ---
 
@@ -330,6 +376,7 @@ sourcing → reviewing → ic → approved
 - **BR-LED-01 추가만**: 원장 행은 수정·삭제할 수 없다 (D5). DB 권한과 트리거로도 막는다.
 - **BR-LED-02 취소**: 취소 행은 원래 행과 조합원·구분·원인 문서가 같고, 금액은 정확히 반대다. 한 행은 한 번만 취소할 수 있다 (`ALREADY_REVERSED`).
 - **BR-LED-03 원인 필수**: 모든 원장 행은 원인 문서(`source_type`, `source_id`)를 가진다. 원인 없이 돈을 기록할 수 없다.
+- **BR-LED-05 취소 범위** (R3): 화면·API에서 직접 취소하는 것은 납입(`contribution`) 행뿐이다. 약정은 명부 취소(BR-MEM-05)로, 분배는 분배 문서(R6)로 정정한다 (`REVERSAL_NOT_ALLOWED`). 취소하면 현금이 줄어들므로, 이미 투자·관리보수로 쓴 납입금이라 현금 잔액이 음수가 되면 막는다 (`INSUFFICIENT_CASH`). 취소 사유(메모)는 필수이고, 취소 행도 `ledger.entry_created` 이벤트로 LP에게 알린다.
 - **BR-LED-04 연동**: 원장 행이 추가될 때마다 `ledger.entry_created` 이벤트를 같은 트랜잭션으로 만든다 (대상 LP = 해당 조합원의 LP).
 
 ---
@@ -357,7 +404,8 @@ sourcing → reviewing → ic → approved
 
   | 이벤트 | 계기 |
   |---|---|
-  | `fund.status_changed` | 조합 상태 이동 |
+  | `fund.status_changed` | 조합 상태 이동 (결성 시 결성일 포함) |
+  | `fund.updated` | 등록 정보·관계 기관 변경 (R2-4 추가) |
   | `fund.terms_updated` | 규약 새 버전 |
   | `member.joined` | 조합원 명부 확정 |
   | `ledger.entry_created` | 원장 행 추가 (약정·납입·분배·취소) |
@@ -406,6 +454,39 @@ sourcing → reviewing → ic → approved
 | `LEAD_EXISTS` | BR-MGR-02 | 대표펀드매니저는 조합당 1명입니다. 기존 대표펀드매니저를 교체하세요 |
 | `ALREADY_ASSIGNED` | BR-MGR-02 | 이미 이 조합을 담당 중인 구성원입니다. 역할을 바꾸려면 교체하세요 |
 | `MANAGER_NOT_ACTIVE` | BR-MGR-05 | 현재 담당 중인 운용 인력이 아닙니다 (이미 해임됨) |
+| `DUPLICATE_PROPOSAL` | BR-PROP-05 | 이 출자자에게는 이미 이 조합의 출자 제안이 있습니다 |
+| `PROPOSAL_CLOSED` | BR-PROP-06, 07 | 이미 확약·거절된 제안입니다 |
+| `LOC_AMOUNT_REQUIRED` | BR-PROP-02 | 확약하려면 확약 금액을 입력하세요 |
+| `INVALID_FUND_TRANSITION` | BR-FUND-06 | 이 상태로는 이동할 수 없습니다 (한 단계씩 앞으로만) |
+| `PROPOSAL_NOT_COMMITTED` | BR-MEM-01 | 확약되지 않은 제안은 조합원이 될 수 없습니다 |
+| `ROSTER_ALREADY_CONFIRMED` | BR-MEM-05 | 이미 확정된 명부가 있습니다. 먼저 명부를 취소하세요 |
+| `ROSTER_NOT_CONFIRMED` | BR-MEM-05 | 확정된 명부가 없습니다 |
+| `ROSTER_LOCKED` | BR-MEM-05 | 결성 안건 가결 또는 캐피탈콜 이후에는 명부를 취소할 수 없습니다 |
+| `ROSTER_CONFIRMED` | BR-MEM-05 | 명부가 확정되어 규약을 고칠 수 없습니다 |
+| `MEETING_ALREADY_SCHEDULED` | BR-MTG-04 | 이미 예정된 결성총회가 있습니다 |
+| `FORMATION_ALREADY_PASSED` | BR-MTG-04 | 결성 안건이 이미 가결되었습니다 |
+| `AGENDA_NOT_ALLOWED` | BR-MTG-04 | 이 안건은 해당 총회에서만 다룰 수 있습니다 |
+| `MEETING_NOT_CONVENED` | BR-MTG-04 | 소집 통지를 먼저 보내세요 |
+| `NOT_A_MEMBER` | BR-VOTE-01 | 의결권이 있는 조합원이 아닙니다 |
+| `CALL_NOT_ISSUED` | BR-CALL-08 | 발송한 캐피탈콜에만 납입을 기록할 수 있습니다 |
+| `IDEMPOTENCY_KEY_REQUIRED` | D22 | 중복 처리를 막기 위한 Idempotency-Key 헤더가 필요합니다 |
+| `IDEMPOTENCY_KEY_REUSED` | D22 | 같은 키로 다른 요청을 보냈습니다 |
+| `DUPLICATE_INSTITUTION` | BR-INST-01 | 이 종류의 관계 기관은 이미 등록되어 있습니다 |
+| `INVALID_PERIOD` | BR-FEE-02, 08 | 청구할 수 있는 기간이 아닙니다 |
+| `ZERO_FEE` | BR-FEE-08 | 청구할 관리보수가 0원입니다 |
+| `REVERSAL_NOT_ALLOWED` | BR-LED-05 | 이 기록은 여기서 취소할 수 없습니다 |
+| `DEAL_CLOSED` | BR-DEAL-02 | 종료된 딜은 바꿀 수 없습니다. 새 딜을 만드세요 |
+| `DROP_REASON_REQUIRED` | BR-DEAL-03 | 드롭 사유를 입력하세요 |
+| `APPROVAL_REQUIREMENTS` | BR-DEAL-04 | 투자 확정에는 투자 예정 조합과 예상 금액이 필요합니다 |
+| `REPORT_DRAFT_EXISTS` | BR-RPT-06 | 같은 기간의 초안이 이미 있습니다 |
+| `REPORT_PERIOD_NOT_ENDED` | BR-RPT-06 | 보고 기간이 끝난 뒤에 발행할 수 있습니다 |
+| `AGENDA_ALREADY_USED` | BR-TERM-02 | 이 안건으로 이미 규약 새 버전을 만들었습니다 |
+| `IC_REQUIREMENTS` | BR-DEAL-07 | 투심위에 올리려면 딜 메모 1건 이상과 예상 투자 금액이 필요합니다 |
+| `DEAL_ALREADY_INVESTED` | BR-INV-07 | 이 딜로는 이미 신규 투자를 집행했습니다 |
+| `NOT_A_HOLDING` | BR-INV-02, BR-VAL-01 | 이 조합이 보유 중인 기업이 아닙니다 |
+| `DUPLICATE_VALUATION` | BR-VAL-02 | 같은 기준일의 평가가 이미 있습니다 |
+| `VALUATION_NOT_ALLOWED` | BR-VAL-03 | 전액 회수된 기업은 평가하지 않습니다 |
+| `TRANSITION_NOT_SUPPORTED` | BR-FUND-02~05 | 아직 제공하지 않는 상태 이동입니다 (결성 이후 단계는 R2부터) |
 
 ---
 

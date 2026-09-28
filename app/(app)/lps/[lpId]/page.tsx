@@ -1,16 +1,9 @@
 import Link from "next/link";
 import { FundStatusBadge } from "@/components/fund-status";
 import { formatDate, formatKRW, formatKRWFull } from "@/lib/format";
-import { LP_TYPE_LABEL } from "@/lib/labels";
+import { LP_TYPE_LABEL, PROPOSAL_STATUS_LABEL } from "@/lib/labels";
 import { loadOrNotFound } from "@/lib/page-helpers";
 import { getLp } from "@/lib/services/lps";
-
-const PROPOSAL_STATUS_LABEL: Record<string, string> = {
-  proposed: "제안",
-  reviewing: "검토 중",
-  committed: "확약",
-  declined: "거절",
-};
 
 export default async function LpDetailPage(props: PageProps<"/lps/[lpId]">) {
   const { lpId } = await props.params;

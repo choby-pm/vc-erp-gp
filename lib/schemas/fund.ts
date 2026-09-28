@@ -48,5 +48,12 @@ export const createFundSchema = z.object({
   terms: fundTermsSchema,
 });
 
+// 규약 새 버전 (결성 이후, 가결 안건 필수, BR-TERM-02·03)
+export const newTermsSchema = fundTermsSchema.extend({
+  agenda_id: z.uuid("근거 안건을 선택하세요"),
+  effective_date: z.string({ error: "적용일을 입력하세요" }).regex(/^\d{4}-\d{2}-\d{2}$/, "적용일은 YYYY-MM-DD 형식입니다"),
+});
+
+export type NewTermsInput = z.infer<typeof newTermsSchema>;
 export type FundBasicInput = z.infer<typeof fundBasicSchema>;
 export type FundTermsInput = z.infer<typeof fundTermsSchema>;

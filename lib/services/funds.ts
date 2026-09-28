@@ -4,6 +4,7 @@ import { formatKRW } from "@/lib/format";
 import { EDITABLE_FUND_STATUSES, type FundStatus, type FundType, type GpType } from "@/lib/labels";
 import { getFundMinimum, type FundMinimum } from "@/lib/rules/fund-minimums";
 import type { FundBasicInput, FundTermsInput } from "@/lib/schemas/fund";
+import { assertNoActiveRoster } from "@/lib/services/roster";
 
 // 조합 서비스: SQL을 직접 작성해 조합·규약을 조회·저장한다.
 // API(쓰기)와 화면(읽기)이 모두 이 함수들을 쓴다.
@@ -39,7 +40,11 @@ export type FundDetail = FundListItem & {
   investment_period_years: number;
   formation_date: string | null;
   maturity_date: string | null;
-  terms: FundTerms;
+  investment_period_end_date: string | null;
+  registration_applied_date: string | null;
+  registration_completed_date: string | null;
+  terms: FundTerms; // 오늘 적용되는 버전 (BR-TERM-04)
+  scheduled_terms: { version: number; effective_date: string } | null; // 적용일이 아직 오지 않은 새 버전
   minimum: FundMinimum;
   editable: boolean;
 };
@@ -87,10 +92,13 @@ function assertUnitAmount(fund: Pick<FundBasicInput, "fund_type" | "gp_type">, u
 
 // ─── 조회 ──────────────────────────────────────────────────────────────────
 
-export async function listFunds(): Promise<FundListItem[]> {
-  return sql<FundListItem[]>`
+// 목록에는 결성 전 조합의 모집 진행을 보여주려고 확약 금액 합(BR-PROP-04)을 함께 준다
+export async function listFunds() {
+  return sql<(FundListItem & { committed_loc_amount: number })[]>`
     select f.id, f.name, f.fund_type, f.gp_type, f.status, f.target_amount, f.created_at,
-           s.total_commitment_amount, s.total_paid_amount
+           s.total_commitment_amount, s.total_paid_amount,
+           coalesce((select sum(p.loc_amount) from lp_proposals p where p.fund_id = f.id and p.status = 'committed'), 0)::bigint
+             as committed_loc_amount
     from funds f
     join v_fund_summary s on s.fund_id = f.id
     order by f.created_at desc
@@ -102,22 +110,27 @@ export async function getFund(fundId: string): Promise<FundDetail> {
 
   const [fund] = await sql`
     select f.id, f.name, f.fund_type, f.gp_type, f.status, f.target_amount, f.term_years, f.investment_period_years,
-           f.formation_date, f.created_at,
-           s.total_commitment_amount, s.total_paid_amount, s.maturity_date
+           f.formation_date, f.registration_applied_date, f.registration_completed_date, f.created_at,
+           s.total_commitment_amount, s.total_paid_amount, s.maturity_date, s.investment_period_end_date
     from funds f
     join v_fund_summary s on s.fund_id = f.id
     where f.id = ${fundId}
   `;
   if (!fund) throw notFound("조합을");
 
-  // 가장 최신 규약 버전 (날짜 기준 적용 버전 조회는 R5 규약 변경에서 추가, BR-TERM-04)
+  // BR-TERM-04: 오늘 적용되는 규약 = 적용일이 오늘 이전인 버전 중 최신. 적용일이 아직 오지 않은 새 버전은 따로 알려준다
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
   const [terms] = await sql`
     select version, primary_purpose, unit_amount, primary_purpose_min_ratio, gp_commitment_min_ratio,
            management_fee_rate, management_fee_rate_after, carry_rate, hurdle_rate, quorum_ratio, effective_date
     from fund_terms
     where fund_id = ${fundId}
-    order by version desc
+    order by (effective_date <= ${today}) desc, version desc
     limit 1
+  `;
+  const [scheduled] = await sql<{ version: number; effective_date: string }[]>`
+    select version, effective_date from fund_terms where fund_id = ${fundId} and effective_date > ${today} and version > 1
+    order by version desc limit 1
   `;
 
   return {
@@ -126,7 +139,11 @@ export async function getFund(fundId: string): Promise<FundDetail> {
     investment_period_years: fund.investment_period_years,
     formation_date: fund.formation_date,
     maturity_date: fund.maturity_date,
+    investment_period_end_date: fund.investment_period_end_date,
+    registration_applied_date: fund.registration_applied_date,
+    registration_completed_date: fund.registration_completed_date,
     terms: parseTerms(terms),
+    scheduled_terms: scheduled ?? null,
     minimum: getFundMinimum(fund.fund_type, fund.gp_type),
     editable: EDITABLE_FUND_STATUSES.includes(fund.status),
   };
@@ -188,6 +205,19 @@ export async function updateFundBasic(fundId: string, fund: FundBasicInput) {
 export async function updateTermsV1(fundId: string, terms: FundTermsInput) {
   await sql.begin(async (tx) => {
     const fund = await lockEditableFund(tx as unknown as typeof sql, fundId, "BR-TERM-01");
+
+    // 조합 수정 화면은 기본 정보만 고쳐도 규약을 함께 보낸다. 규약이 실제로 바뀔 때만 명부 확정 여부를 검사한다
+    const [current] = await tx`
+      select primary_purpose, unit_amount, ${sql(RATIO_KEYS as unknown as string[])} from fund_terms where fund_id = ${fundId} and version = 1
+    `;
+    const before = parseTerms(current);
+    const changed =
+      before.primary_purpose !== terms.primary_purpose ||
+      before.unit_amount !== terms.unit_amount ||
+      RATIO_KEYS.some((k) => before[k] !== terms[k]);
+    if (!changed) return;
+
+    await assertNoActiveRoster(tx as unknown as typeof sql, fundId);
     assertUnitAmount(fund, terms.unit_amount, "");
     await tx`
       update fund_terms set ${tx(terms, ...RATIO_KEYS, "primary_purpose", "unit_amount")}

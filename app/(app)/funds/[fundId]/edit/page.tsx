@@ -15,9 +15,9 @@ export default async function EditFundPage(props: PageProps<"/funds/[fundId]/edi
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
         <Link href={`/funds/${fund.id}`} className="text-sm text-slate-500 hover:text-indigo-600">
-          ← {fund.name}
+          ← 개요
         </Link>
-        <h1 className="mt-2 text-2xl font-bold text-slate-900">조합 수정</h1>
+        <h2 className="mt-2 text-xl font-bold text-slate-900">조합 정보 수정</h2>
       </div>
       <FundForm fund={fund} />
     </div>
