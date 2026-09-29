@@ -102,12 +102,22 @@ export async function postJournal(
   return { id: created.id, entry_no: next };
 }
 
-// BR-ACC-03: 결산한 기간에는 분개를 넣을 수 없다 (업무 기록도 함께 막힌다)
-async function assertOpenPeriod(tx: typeof sql, fundId: string, date: string) {
+// BR-ACC-03: 결산한 기간에는 분개를 넣을 수 없다 (업무 기록도 함께 막힌다). 재개한 결산은 잠그지 않는다 (BR-ACC-07)
+async function closedPeriodOf(tx: typeof sql, fundId: string, date: string) {
   const [closed] = await tx<{ fiscal_year: number; period_end: string }[]>`
-    select fiscal_year, period_end from fiscal_closings where fund_id = ${fundId} and period_end >= ${date}
+    select fiscal_year, period_end from fiscal_closings where fund_id = ${fundId} and period_end >= ${date} and reopened_at is null
     order by period_end desc limit 1
   `;
+  return closed ?? null;
+}
+
+// 정정(취소)의 역분개일: 원래 거래일로 적되, 그 기간이 결산됐으면 오늘로 적는다
+export async function correctionDate(tx: typeof sql, fundId: string, originalDate: string) {
+  return (await closedPeriodOf(tx, fundId, originalDate)) ? today() : originalDate;
+}
+
+async function assertOpenPeriod(tx: typeof sql, fundId: string, date: string) {
+  const closed = await closedPeriodOf(tx, fundId, date);
   if (closed) {
     throw new AppError(409, "PERIOD_CLOSED", `${closed.fiscal_year} 사업연도(~${formatDate(closed.period_end)})는 결산이 끝나 기록할 수 없습니다. 이후 날짜로 기록하세요`, "BR-ACC-03", {
       fields: { date: `${formatDate(closed.period_end)} 이후 날짜를 입력하세요` },
@@ -454,10 +464,23 @@ export function fiscalPeriod(year: number, formationDate: string | null) {
   return { start, end: `${year}-12-31` };
 }
 
+export type FiscalClosing = {
+  id: string;
+  fiscal_year: number;
+  period_start: string;
+  period_end: string;
+  net_income: number;
+  closed_at: Date;
+  closing_entry_id: string | null;
+  reopened_at: Date | null; // 재개한 결산 (이력으로만 남는다)
+  reopen_reason: string | null;
+};
+
 export async function listClosings(fundId: string) {
   assertUuid(fundId, "조합을");
-  return sql<{ fiscal_year: number; period_start: string; period_end: string; net_income: number; closed_at: Date; closing_entry_id: string | null }[]>`
-    select fiscal_year, period_start, period_end, net_income, closed_at, closing_entry_id from fiscal_closings where fund_id = ${fundId} order by fiscal_year
+  return sql<FiscalClosing[]>`
+    select id, fiscal_year, period_start, period_end, net_income, closed_at, closing_entry_id, reopened_at, reopen_reason
+    from fiscal_closings where fund_id = ${fundId} order by fiscal_year, closed_at
   `;
 }
 
@@ -472,11 +495,11 @@ export async function closeFiscalYear(fundId: string, year: number, userId: stri
     if (year < formationYear) throw new AppError(422, "INVALID_PERIOD", `결성한 해(${formationYear}) 이전 사업연도는 없습니다`, "BR-ACC-03");
     const { start, end } = fiscalPeriod(year, fund.formation_date);
     if (end >= today()) throw new AppError(422, "INVALID_PERIOD", `${year} 사업연도가 끝난 뒤(${formatDate(end)} 이후)에 결산할 수 있습니다`, "BR-ACC-03");
-    const [done] = await tx`select 1 from fiscal_closings where fund_id = ${fundId} and fiscal_year = ${year}`;
+    const [done] = await tx`select 1 from fiscal_closings where fund_id = ${fundId} and fiscal_year = ${year} and reopened_at is null`;
     if (done) throw new AppError(409, "ALREADY_CLOSED", `${year} 사업연도는 이미 결산했습니다`, "BR-ACC-03");
     // 이전 사업연도부터 차례로 결산한다
     if (year > formationYear) {
-      const [prev] = await tx`select 1 from fiscal_closings where fund_id = ${fundId} and fiscal_year = ${year - 1}`;
+      const [prev] = await tx`select 1 from fiscal_closings where fund_id = ${fundId} and fiscal_year = ${year - 1} and reopened_at is null`;
       if (!prev) throw new AppError(409, "PREVIOUS_YEAR_OPEN", `${year - 1} 사업연도를 먼저 결산하세요`, "BR-ACC-03");
     }
 
@@ -509,5 +532,32 @@ export async function closeFiscalYear(fundId: string, year: number, userId: stri
       values (${fundId}, ${year}, ${start}, ${end}, ${closing?.id ?? null}, ${net}, ${userId})
     `;
     return { fiscal_year: year, net_income: net, closing_entry_no: closing?.entry_no ?? null };
+  });
+}
+
+// BR-ACC-07 결산 재개: 마지막으로 결산한 사업연도부터 거꾸로 연다. 결산 분개를 기말 날짜로 역분개하고 잠금을 푼다.
+// 결산 기록은 지우지 않고 재개 표시를 남긴다. 고친 뒤 다시 결산한다
+export async function reopenFiscalYear(fundId: string, year: number, reason: string, userId: string) {
+  assertUuid(fundId, "조합을");
+  return sql.begin(async (tx) => {
+    const t = tx as unknown as typeof sql;
+    const [fund] = await tx<{ status: string }[]>`select status from funds where id = ${fundId} for update`;
+    if (!fund) throw notFound("조합을");
+    if (fund.status === "liquidated") throw new AppError(409, "FUND_STATUS_NOT_ALLOWED", "청산한 조합의 결산은 다시 열 수 없습니다", "BR-ACC-07");
+    const [closing] = await tx<{ id: string; period_end: string; closing_entry_id: string | null }[]>`
+      select id, period_end, closing_entry_id from fiscal_closings where fund_id = ${fundId} and fiscal_year = ${year} and reopened_at is null for update
+    `;
+    if (!closing) throw new AppError(409, "NOT_CLOSED", `${year} 사업연도는 결산하지 않았습니다`, "BR-ACC-07");
+    const [later] = await tx<{ fiscal_year: number }[]>`
+      select fiscal_year from fiscal_closings where fund_id = ${fundId} and fiscal_year > ${year} and reopened_at is null order by fiscal_year desc limit 1
+    `;
+    if (later) throw new AppError(409, "LATER_YEAR_CLOSED", `${later.fiscal_year} 사업연도 결산을 먼저 재개하세요. 마지막 결산부터 거꾸로 엽니다`, "BR-ACC-07");
+
+    // 잠금을 먼저 풀어야 기말 날짜로 역분개할 수 있다
+    await tx`update fiscal_closings set reopened_at = now(), reopened_by = ${userId}, reopen_reason = ${reason} where id = ${closing.id}`;
+    const reversal = closing.closing_entry_id
+      ? await reverseJournal(t, closing.closing_entry_id, closing.period_end, `${year} 사업연도 결산 재개: ${reason}`, userId)
+      : null;
+    return { fiscal_year: year, reversal_entry_no: reversal?.entry_no ?? null };
   });
 }

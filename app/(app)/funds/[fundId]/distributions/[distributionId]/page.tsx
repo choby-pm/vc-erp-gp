@@ -6,7 +6,7 @@ import { DISTRIBUTION_STATUS_LABEL } from "@/lib/labels";
 import { loadOrNotFound } from "@/lib/page-helpers";
 import { getDistribution } from "@/lib/services/distributions";
 
-// 분배 상세: 조합원 × 단계별 분배액 + 확정·지급 (BR-DIST-04~06)
+// 분배 상세: 조합원 × 단계별 분배액 + 확정·지급·취소 (BR-DIST-04~06, 10)
 
 const STEPS = [
   { key: "draft", label: "초안", note: "워터폴 계산 결과 저장. 삭제할 수 있음" },
@@ -18,7 +18,8 @@ export default async function DistributionDetailPage(props: PageProps<"/funds/[f
   const { fundId, distributionId } = await props.params;
   const d = await loadOrNotFound(() => getDistribution(fundId, distributionId));
   const title = d.is_final ? "최종 분배" : `제${d.distribution_no}차 분배`;
-  const step = STEPS.findIndex((s) => s.key === d.status);
+  // 취소된 분배는 취소 전에 거친 단계까지 표시한다
+  const step = d.status === "cancelled" ? (d.paid_at ? 2 : 1) : STEPS.findIndex((s) => s.key === d.status);
 
   return (
     <div className="space-y-6">
@@ -52,6 +53,12 @@ export default async function DistributionDetailPage(props: PageProps<"/funds/[f
             </li>
           ))}
         </ol>
+        {d.status === "cancelled" && d.cancelled_at && (
+          <p className="mt-4 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {formatDate(d.cancelled_at)} 취소 · {d.cancel_reason}
+            {d.paid_at && " · 지급했던 분배라 조합원 원장에 취소 행을 남기고 분배 분개를 역분개했습니다."}
+          </p>
+        )}
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6">

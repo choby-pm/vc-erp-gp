@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { DispatchButton, RetryButton } from "@/components/integration-actions";
+import NoPermission from "@/components/no-permission";
+import { getCurrentUser } from "@/lib/auth/session";
 import { formatDate } from "@/lib/format";
-import { listEvents, type EventStatus } from "@/lib/services/integration";
+import { DISPATCH_SCHEDULE_LABEL, listEvents, type EventStatus } from "@/lib/services/integration";
 
 export const metadata = { title: "LP 연동 · VC ERP" };
 
@@ -24,6 +26,8 @@ const STATUS: Record<EventStatus, { label: string; color: string }> = {
 };
 
 export default async function IntegrationsPage(props: PageProps<"/integrations">) {
+  const me = await getCurrentUser();
+  if (me?.role !== "admin") return <NoPermission area="LP 연동" role={me?.role} />;
   const raw = await props.searchParams;
   const status = ["pending", "delivered", "failed"].includes(raw.status as string) ? (raw.status as EventStatus) : null;
   const data = await listEvents(status);
@@ -54,6 +58,7 @@ export default async function IntegrationsPage(props: PageProps<"/integrations">
           <ul className="mt-3 space-y-2 text-sm">
             {setting(c.api_key_configured, "LP 연동 API 키", "LP_SYSTEM_API_KEY · /api/lp/v1 호출 인증 (Bearer)")}
             {setting(c.secret_configured, "웹훅 서명 비밀 값", "LP_WEBHOOK_SECRET · HMAC-SHA256 서명")}
+            {setting(c.cron_configured, "자동 전송 (Vercel Cron)", c.cron_configured ? `CRON_SECRET · ${DISPATCH_SCHEDULE_LABEL}` : "CRON_SECRET 미설정 · 배포 환경에 설정하면 주기적으로 자동 전송합니다")}
             {setting(c.webhook_configured, "웹훅 받을 주소", c.webhook_configured ? "LP_SYSTEM_WEBHOOK_URL" : "LP_SYSTEM_WEBHOOK_URL 미설정 · 이벤트는 대기로 쌓이고 LP 시스템이 /api/lp/v1/events 로 가져갈 수 있습니다")}
           </ul>
         </section>
@@ -70,8 +75,19 @@ export default async function IntegrationsPage(props: PageProps<"/integrations">
               </div>
             ))}
           </dl>
+          {data.job?.last_started_at && (
+            <p className="mt-3 text-sm text-slate-600">
+              마지막 전송 {formatDate(data.job.last_started_at)} {new Date(data.job.last_started_at).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit" })} ·{" "}
+              {data.job.last_trigger === "cron" ? "자동" : "수동"}
+              {data.job.running
+                ? " · 전송 중"
+                : data.job.last_error
+                  ? ` · 오류: ${data.job.last_error}`
+                  : data.job.last_result && ` · 전송 ${data.job.last_result.delivered ?? 0}건 · 실패 ${data.job.last_result.failed ?? 0}건`}
+            </p>
+          )}
           <p className="mt-3 text-xs text-slate-500">
-            실패하면 1분 → 5분 → 30분 → 2시간 → 12시간 뒤 다시 보내고, 5번 실패하면 멈춥니다. 같은 LP의 이벤트는 순서대로 보내 앞 이벤트가 멈추면 뒤 이벤트도 기다립니다.
+            자동 전송은 {DISPATCH_SCHEDULE_LABEL} 돌고, 그 사이에는 이 버튼으로 보냅니다. 실패하면 1분 → 5분 → 30분 → 2시간 → 12시간 뒤 다시 보내고, 5번 실패하면 멈춥니다. 같은 LP의 이벤트는 순서대로 보내 앞 이벤트가 멈추면 뒤 이벤트도 기다립니다.
           </p>
         </section>
       </div>

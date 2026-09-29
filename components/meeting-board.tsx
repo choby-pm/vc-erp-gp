@@ -64,7 +64,7 @@ export default function MeetingBoard({ fundId, meeting }: { fundId: string; meet
             <li className={meeting.convened_at ? "text-emerald-700" : "font-semibold text-slate-900"}>
               {meeting.convened_at ? "✓" : "1."} 소집 통지 {meeting.convened_at && `(${formatDate(meeting.convened_at)})`}
             </li>
-            <li className={meeting.can_vote ? "font-semibold text-slate-900" : "text-slate-400"}>2. 조합원별 찬반 입력</li>
+            <li className={meeting.can_vote ? "font-semibold text-slate-900" : "text-slate-400"}>2. 찬반 수집 (LP 직접 투표 · GP 입력)</li>
             <li className={meeting.can_hold ? "font-semibold text-slate-900" : "text-slate-400"}>3. 개최 처리 (결과 확정)</li>
           </ol>
           {meeting.can_convene && (
@@ -159,7 +159,13 @@ function AgendaCard({ agenda: a, meeting, base }: { agenda: AgendaTally; meeting
                 <td className="py-2">{v.name}</td>
                 <td className="py-2 text-right tabular-nums">{formatPercent(v.voting_power, 2)}</td>
                 <td className="py-2 text-right">
-                  {meeting.can_vote ? (
+                  {a.lp_direct.includes(v.member_id) ? (
+                    // LP가 LP 시스템에서 직접 투표: GP는 바꿀 수 없다 (BR-VOTE-07)
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">LP 직접</span>
+                      <span className="font-semibold text-slate-900">{choice ? VOTE_CHOICE_LABEL[choice] : "미투표"}</span>
+                    </span>
+                  ) : meeting.can_vote ? (
                     <span className="inline-flex overflow-hidden rounded-lg border border-slate-300">
                       {VOTE_CHOICES.map((c) => (
                         <button

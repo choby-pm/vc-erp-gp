@@ -1,21 +1,35 @@
 import { z } from "zod";
+import { authorize, ROLE_LABEL } from "@/lib/auth/permissions";
 import { getCurrentUser, type CurrentUser } from "@/lib/auth/session";
+import { errorCodeOf, writeAudit } from "@/lib/services/audit";
 import { AppError } from "./errors";
 import { fail, readJson } from "./response";
 
 // 로그인이 필요한 API의 공통 처리
 //   1. 로그인 확인 → 없으면 401
-//   2. 본래 처리 실행
-//   3. 던져진 오류를 공통 실패 응답으로 변환
+//   2. 역할 권한 확인 → 없으면 403 (D42, lib/auth/permissions.ts)
+//   3. 본래 처리 실행
+//   4. 던져진 오류를 공통 실패 응답으로 변환
+//   5. 쓰기 요청이면 결과와 함께 감사 로그를 남긴다 (막힌 요청 포함)
 export function withUser<Ctx>(handler: (request: Request, ctx: Ctx, user: CurrentUser) => Promise<Response>) {
   return async (request: Request, ctx: Ctx) => {
+    const user = await getCurrentUser().catch(() => null);
+    if (!user) return fail(401, "UNAUTHORIZED", "로그인이 필요합니다");
+    const path = new URL(request.url).pathname;
+    let res: Response;
     try {
-      const user = await getCurrentUser();
-      if (!user) return fail(401, "UNAUTHORIZED", "로그인이 필요합니다");
-      return await handler(request, ctx, user);
+      const decision = authorize(user.role, request.method, path.replace(/^\/api\/v1/, ""));
+      res = decision.allowed
+        ? await handler(request, ctx, user)
+        : fail(403, "FORBIDDEN", `${decision.area}은(는) ${decision.roles.map((r) => ROLE_LABEL[r]).join("·")} 권한이 필요합니다 (내 권한: ${ROLE_LABEL[user.role]})`, { rule: "BR-AUTH-02" });
     } catch (err) {
-      return toErrorResponse(err);
+      res = toErrorResponse(err);
     }
+    // 계산만 하는 미리보기(POST …/preview)는 데이터를 바꾸지 않으므로 남기지 않는다
+    if (request.method !== "GET" && request.method !== "HEAD" && !path.endsWith("/preview")) {
+      await writeAudit({ actor_type: "user", user, method: request.method, path, status: res.status, error_code: await errorCodeOf(res), request });
+    }
+    return res;
   };
 }
 

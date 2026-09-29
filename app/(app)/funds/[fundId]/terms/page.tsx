@@ -1,6 +1,8 @@
 import Link from "next/link";
+import AttachmentPanel from "@/components/attachment-panel";
 import TermsAmendForm from "@/components/terms-amend-form";
 import { formatDate, formatKRWFull, formatPercent } from "@/lib/format";
+import { listAttachments, storageConfigured } from "@/lib/services/attachments";
 import { listPassedAgendas, listTermsVersions, type TermsVersion } from "@/lib/services/terms";
 
 type Row = { label: string; value: (t: TermsVersion) => string };
@@ -26,6 +28,7 @@ export default async function TermsPage(props: PageProps<"/funds/[fundId]/terms"
   const latest = data.versions[0];
   // 오래된 버전이 왼쪽에 오도록 뒤집는다. 직전 버전과 달라진 칸을 강조한다
   const columns = [...data.versions].reverse();
+  const files = await Promise.all(data.versions.map((t) => listAttachments(fundId, "fund_terms", t.id)));
 
   return (
     <div className="space-y-6">
@@ -63,6 +66,21 @@ export default async function TermsPage(props: PageProps<"/funds/[fundId]/terms"
             ))}
           </tbody>
         </table>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-6">
+        <h2 className="text-base font-semibold text-slate-900">규약 원문</h2>
+        <p className="mt-0.5 text-xs text-slate-500">버전별 규약 원문 PDF. LP 시스템에서도 조합원이 내려받을 수 있습니다 (오늘 적용 중인 버전).</p>
+        <div className="mt-4 space-y-4">
+          {data.versions.map((t, i) => (
+            <div key={t.id}>
+              <p className="mb-1.5 text-sm font-semibold text-slate-700">
+                버전 {t.version} <span className="font-normal text-slate-500">· 적용일 {formatDate(t.effective_date)}</span>
+              </p>
+              <AttachmentPanel fundId={fundId} targetType="fund_terms" targetId={t.id} attachments={files[i]} storageConfigured={storageConfigured()} />
+            </div>
+          ))}
+        </div>
       </section>
 
       {data.can_amend ? (

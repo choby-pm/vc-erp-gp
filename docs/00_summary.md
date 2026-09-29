@@ -20,8 +20,12 @@
 | R5.5 | 재무·회계: 기타 비용, 현금출납장, 복식부기 자동 분개, 계정별 원장, 시산표, 재무제표, 결산·기간 잠금 | 현금·비용 · 재무제표 · 장부 · 결산 |
 | R6 | 회수(처분손익 분개), 분배 워터폴(초안 → 확정 → 지급), 성과보수, 해산·청산 | 회수 · 분배 · 성과보수 |
 | R7 | 대시보드, 통지 화면, LP 연동 API, 이벤트 웹훅 전송, LP 공개 데이터 미리보기, 전 단계 데모 데이터 | 대시보드 · 통지 · LP 연동 |
+| R8 | 정정: 회수 취소(처분 분개 역분개), 분배 취소(원장 취소 행 + 역분개 + LP 통지), 결산 재개(결산 분개 역분개) | 회수 · 분배 상세 · 결산 |
+| R9 | LP 직접 투표: LP 연동 API로 찬반 제출, GP 화면에 "LP 직접" 표시(GP 수정 불가) | 총회 · LP 연동 API |
+| R10 | 이벤트 자동 전송(Vercel Cron, 하루 1회 + 실행 잠금), 규약 원문·보고서 PDF 첨부(비공개 Vercel Blob, LP 내려받기) | LP 연동 · 규약 · 정기 보고 |
+| R11 | 역할별 권한(관리자·운용·재무·조회, 서버 한곳에서 검사, 메뉴 숨김), 감사 로그(모든 쓰기·로그인·거부 시도, 수정 불가) | 구성원 · 감사 로그 |
 
-규모: 마이그레이션 10개, 테이블 37개, 계산용 뷰, GP 내부 API 라우트 86개, LP 연동 API 11개.
+규모: 마이그레이션 14개, 테이블 37개, 계산용 뷰, GP 내부 API 라우트 94개 + 주기 작업 1개, LP 연동 API 13개.
 
 ## 3. 화면 구조
 
@@ -83,7 +87,7 @@ Next.js 16 (App Router, Route Handlers), TypeScript, Tailwind CSS, PostgreSQL(Ne
 
 ```bash
 npm install
-npm run db:migrate                 # 마이그레이션 001~010
+npm run db:migrate                 # 마이그레이션 001~014
 npm run db:seed && npm run db:seed-staff
 npm run db:seed-sample             # 출자자·구성원·조합 (기획~결성 준비)
 npm run db:seed-sample-deals       # 기업·딜 + 운용 중 조합
@@ -93,10 +97,9 @@ npm run dev
 ```
 
 `.env.local` 에 `DATABASE_URL`, LP 연동용 `LP_SYSTEM_API_KEY`, `LP_WEBHOOK_SECRET`, `LP_SYSTEM_WEBHOOK_URL`(비우면 이벤트는 대기)을 둔다.
+배포 환경에는 추가로 `CRON_SECRET`(이벤트 자동 전송, `vercel.ts` 의 crons)과 Vercel Blob 스토어 연결(`BLOB_STORE_ID` 또는 `BLOB_READ_WRITE_TOKEN`, 파일 첨부)이 필요하다. 없으면 자동 전송·파일 올리기만 꺼진다.
 
 ## 9. 남은 과제 (고도화)
 
-- 회수·분배 정정(취소·역분개), 결산 재개
-- LP가 LP 시스템에서 직접 투표
-- 이벤트 전송 주기 작업(Vercel Cron), 파일 첨부(규약 원문·보고서 PDF)
-- 권한(역할별 메뉴·승인 절차), 감사 로그 화면
+- 4MB가 넘는 PDF 첨부(브라우저 → Blob 직접 업로드), 유료 요금제에서 자동 전송 주기 단축
+- 승인 절차 (예: 운용이 요청한 투자·분배를 관리자·재무가 승인), 역할에 따라 업무 화면 버튼 숨기기

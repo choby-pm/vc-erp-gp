@@ -190,6 +190,10 @@ Idempotency-Key: 7f3c9a2e-…
 | POST | `/staff/{staff_id}/account` | 로그인 계정 생성 (임시 비밀번호 1회 표시) | BR-STF-03 |
 | POST 🔄 | `/staff/{staff_id}/account/reset-password` | 임시 비밀번호 재발급 (기존 로그인 끊김) | BR-STF-03 |
 | POST 🔄 | `/staff/{staff_id}/account/disable` · `/enable` | 계정 중지 · 다시 사용 | BR-STF-04, 05 |
+| PUT | `/staff/{staff_id}/account/role` | 권한 변경 `{ "role": "admin|manager|finance|viewer" }` (관리자만, 자기 자신 불가) | BR-AUTH-03 |
+| GET | `/audit-logs?user_id=&fund_id=&result=ok|fail|denied&from=&to=` | 감사 로그 최근 200건 (관리자만) | BR-AUTH-04 |
+
+> 구성원 쓰기 API와 LP 연동 관리·감사 로그는 **관리자**만 쓸 수 있다. 역할별 권한 전체는 04 업무 규칙 12-2.
 
 > 임시 비밀번호가 담긴 응답은 한 번만 내려가고, 이후 어떤 API로도 다시 조회할 수 없다.
 
@@ -272,6 +276,7 @@ Idempotency-Key: 7f3c9a2e-…
 | GET / POST | `/funds/{fund_id}/valuations` | 평가 목록 / 기록 `{ "company_id", "valuation_date", "fair_value_amount", "method"? }` | BR-VAL-01~04 |
 | GET | `/funds/{fund_id}/exits` | 회수 목록 + 합계(처분대가·원가·손익·배수) + 회수할 수 있는 보유 기업 | |
 | POST 💰 | `/funds/{fund_id}/exits` | 회수 기록 `{ "company_id", "exit_type", "exit_date", "proceeds_amount", "full_exit", "cost_basis_amount"?, "memo"? }` (`Idempotency-Key` 필수, 처분 분개) | BR-EXIT-01~07 |
+| POST | `/funds/{fund_id}/exits/{exit_id}/cancel` | 회수 취소 `{ "reason" }` (취소 표시 + 처분 분개 역분개) | BR-EXIT-08 |
 
 ### 3-9. 관리보수
 
@@ -284,7 +289,8 @@ Idempotency-Key: 7f3c9a2e-…
 | GET | `/funds/{fund_id}/accounting/trial-balance?as_of=` | 시산표 | |
 | GET | `/funds/{fund_id}/accounting/statements?from=&to=` | 재무상태표(to 기준) + 손익계산서(from~to) | BR-ACC-05 |
 | GET | `/funds/{fund_id}/accounting/ledger/{account_code}?from=&to=` | 계정별 원장 (기초·누적 잔액) | |
-| GET / POST | `/funds/{fund_id}/accounting/closings` | 결산 이력 / 사업연도 결산 `{ "fiscal_year" }` | BR-ACC-03 |
+| GET / POST | `/funds/{fund_id}/accounting/closings` | 결산 이력(재개 포함) / 사업연도 결산 `{ "fiscal_year" }` | BR-ACC-03 |
+| POST | `/funds/{fund_id}/accounting/closings/{fiscal_year}/reopen` | 결산 재개 `{ "reason" }` (결산 분개 역분개 + 잠금 해제, 마지막 결산부터) | BR-ACC-07 |
 | GET / POST 💰 | `/funds/{fund_id}/expenses` | 기타 비용 목록 / 기록 `{ "expense_type", "description", "payee"?, "amount", "paid_date" }` | BR-EXP-01 |
 | POST | `/funds/{fund_id}/expenses/{expense_id}/cancel` | 기타 비용 취소 `{ "reason" }` | BR-EXP-02 |
 | GET | `/funds/{fund_id}/management-fees` | 청구 이력 | |
@@ -322,6 +328,7 @@ Idempotency-Key: 7f3c9a2e-…
 | GET / DELETE | `/funds/{fund_id}/distributions/{id}` | 상세 / 초안 삭제 | |
 | POST 🔄💰 | `/funds/{fund_id}/distributions/{id}/confirm` | 확정 (재계산 검사 + 잠금 + LP별 통지) | BR-DIST-05, 10 |
 | POST 🔄💰 | `/funds/{fund_id}/distributions/{id}/pay` | 지급 (조합원 원장 + 분개, 분배일 이후) | BR-DIST-06, 11 |
+| POST 🔄💰 | `/funds/{fund_id}/distributions/{id}/cancel` | 확정·지급한 분배 취소 `{ "reason" }` (지급했으면 원장 취소 행 + 역분개, LP 취소 통지, 마지막 분배부터) | BR-DIST-12 |
 
 ### 3-13. 통지·대시보드·연동 관리
 
@@ -333,6 +340,12 @@ Idempotency-Key: 7f3c9a2e-…
 | GET | `/dashboard` | 전체 조합 요약 + 모든 경고 모음 | |
 | GET | `/integration-events` | 연동 이벤트 목록 (`?status=failed`) | |
 | POST | `/integration-events/{event_id}/retry` | 실패 이벤트 재전송 | BR-EVT-03 |
+| POST | `/integration-events/dispatch` | 대기 이벤트 지금 전송 (자동 전송과 같은 잠금, 겹치면 `skipped: true`) | BR-EVT-07 |
+| GET / POST | `/funds/{fund_id}/attachments` | 첨부 목록 `?target_type=fund_terms|report&target_id=` / PDF 올리기 (multipart: `file`, `target_type`, `target_id`) | BR-FILE-01 |
+| DELETE | `/funds/{fund_id}/attachments/{attachment_id}` | 첨부 삭제 (기록은 남음) | BR-FILE-01 |
+| GET | `/funds/{fund_id}/attachments/{attachment_id}/download` | 첨부 파일 열기 (PDF 스트림) | BR-FILE-01 |
+
+주기 작업: `GET /api/cron/dispatch-events` — Vercel Cron 전용 (`Authorization: Bearer {CRON_SECRET}`), 일정은 `vercel.ts` (BR-EVT-07).
 
 **합계: GP 내부 API 약 80개**
 
@@ -592,13 +605,15 @@ Authorization: Bearer {LP_SYSTEM_API_KEY}
 | GET | `/lps/{lp_id}/funds/{fund_id}/ledger` | 내 원장 (취소 행 포함 전체 이력) | 🟢 |
 | GET | `/lps/{lp_id}/funds/{fund_id}/capital-calls` | 발송된 캐피탈콜 + 내 요청액·납입 상태 | 🔵🟢 |
 | GET | `/lps/{lp_id}/funds/{fund_id}/distributions` | 확정된 분배 + 내 분배액(단계별) | 🔵🟢 |
-| GET | `/lps/{lp_id}/funds/{fund_id}/meetings` | 소집된 총회, 안건, 결과, 내 투표 | 🔵🟢 |
+| GET | `/lps/{lp_id}/funds/{fund_id}/meetings` | 소집된 총회(`id`, `voting_open`), 안건(`id`), 결과, 내 투표·투표 경로 | 🔵🟢 |
+| PUT | `/lps/{lp_id}/funds/{fund_id}/meetings/{meeting_id}/votes` | LP 직접 투표 `{ "votes": [{ "agenda_id", "choice" }] }` → 그 총회의 안건과 내 투표 (BR-VOTE-07) | 🔵🟢 |
 | GET | `/lps/{lp_id}/funds/{fund_id}/reports` | 발행된 정기 보고 (스냅샷) | 🔵🟡 |
 | GET | `/lps/{lp_id}/notices` | 받은 통지 전체 (조합원이 되기 전 출자 제안 포함) | 🟢 |
 | POST | `/lps/{lp_id}/notices/{notice_id}/acknowledge` | 통지 확인 처리 | 🟢 |
+| GET | `/lps/{lp_id}/funds/{fund_id}/attachments/{attachment_id}` | 규약 원문·발행된 보고서 PDF 내려받기. 목록은 조합 정보의 `terms.attachments`, 보고서의 `attachments` (BR-FILE-02) | 🔵 |
 | GET | `/events?after={event_id}&limit=100` | 웹훅을 놓쳤을 때 이벤트를 순서대로 다시 받기 | |
 
-> **LP가 직접 투표하는 기능**(LP 시스템에서 찬반 입력)은 고도화 단계다. MVP에서는 GP가 투표 결과를 입력한다.
+> **LP 직접 투표** (D40): LP 시스템이 로그인한 LP의 찬반을 `PUT …/votes` 로 제출한다. 소집 후 개최 처리 전(`voting_open = true`)까지 다시 제출할 수 있다. LP가 직접 한 투표는 GP 화면에서 "LP 직접"으로 표시되고 GP가 바꿀 수 없다. 총회·안건 `id` 는 LP가 행동할 대상이라 공개한다 (통지 확인의 `notice_id` 와 같은 원칙).
 
 ### 5-3. 응답 예시: 내 원장
 

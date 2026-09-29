@@ -95,7 +95,7 @@ async function basisAmount(tx: typeof sql, fundId: string, basis: "commitment" |
   // 투자 잔액 = 누적 투자액 − 회수된 원금
   const [row] = await tx<{ amount: number }[]>`
     select (coalesce((select sum(investment_amount) from investments where fund_id = ${fundId} and investment_date <= ${date}), 0)
-          - coalesce((select sum(cost_basis_amount) from exits where fund_id = ${fundId} and exit_date <= ${date}), 0))::bigint as amount
+          - coalesce((select sum(cost_basis_amount) from exits where fund_id = ${fundId} and exit_date <= ${date} and cancelled_at is null), 0))::bigint as amount
   `;
   return row.amount;
 }

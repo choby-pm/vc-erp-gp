@@ -3,12 +3,14 @@ import { AppError, assertUuid, notFound, statusNotAllowed } from "@/lib/api/erro
 import { formatDate, formatKRWFull } from "@/lib/format";
 import type { ExitType, FundStatus } from "@/lib/labels";
 import type { ExitInput } from "@/lib/schemas/exit";
-import { journalForExit } from "@/lib/services/accounting";
+import { correctionDate, journalForExit, reverseSourceJournal } from "@/lib/services/accounting";
+import { availableCashOn } from "@/lib/services/finance";
 
 // 회수 (04 업무 규칙 9, BR-EXIT-01~06)
 // · 한 기업을 여러 번 나눠 회수할 수 있다. 회수마다 그만큼의 원금(처분 원가)을 함께 기록한다
 // · 회수 금액은 조합 현금으로 들어오고, 처분 원가만큼 투자자산이 줄어든다 (처분손익 = 회수 금액 − 원금)
 // · 회계 (D35): 같은 트랜잭션에서 투자자산 처분 분개를 만든다
+// · 정정 (BR-EXIT-08, D39): 수정하지 않고 취소한 뒤 다시 기록한다. 취소된 회수는 합계·포트폴리오에서 빠지고 처분 분개는 역분개
 
 export type Exit = {
   id: string;
@@ -21,6 +23,8 @@ export type Exit = {
   gain_amount: number;
   multiple: number | null; // BR-EXIT-05: 회수 금액 ÷ 원금
   memo: string | null;
+  cancelled_at: Date | null;
+  cancel_reason: string | null;
 };
 
 export const EXIT_STATUSES: FundStatus[] = ["operating", "dissolved"]; // BR-EXIT-01
@@ -33,7 +37,8 @@ export async function listExits(fundId: string) {
   const exits = await sql<Exit[]>`
     select x.id, x.company_id, c.name as company_name, x.exit_type, x.exit_date, x.proceeds_amount, x.cost_basis_amount,
            (x.proceeds_amount - x.cost_basis_amount)::bigint as gain_amount,
-           round(x.proceeds_amount::numeric / x.cost_basis_amount, 2)::float8 as multiple, x.memo
+           round(x.proceeds_amount::numeric / x.cost_basis_amount, 2)::float8 as multiple, x.memo,
+           x.cancelled_at, x.cancel_reason
     from exits x join companies c on c.id = x.company_id
     where x.fund_id = ${fundId}
     order by x.exit_date desc, x.created_at desc
@@ -44,12 +49,13 @@ export async function listExits(fundId: string) {
     from v_portfolio where fund_id = ${fundId} and remaining_cost_amount > 0
     order by company_name
   `;
-  const proceeds = exits.reduce((s, x) => s + x.proceeds_amount, 0);
-  const cost = exits.reduce((s, x) => s + x.cost_basis_amount, 0);
+  const active = exits.filter((x) => !x.cancelled_at);
+  const proceeds = active.reduce((s, x) => s + x.proceeds_amount, 0);
+  const cost = active.reduce((s, x) => s + x.cost_basis_amount, 0);
   return {
     fund_status: fund.status,
     can_record: EXIT_STATUSES.includes(fund.status),
-    totals: { count: exits.length, proceeds_amount: proceeds, cost_basis_amount: cost, gain_amount: proceeds - cost, multiple: cost > 0 ? proceeds / cost : null },
+    totals: { count: active.length, proceeds_amount: proceeds, cost_basis_amount: cost, gain_amount: proceeds - cost, multiple: cost > 0 ? proceeds / cost : null },
     exits,
     holdings,
   };
@@ -102,5 +108,35 @@ export async function recordExit(fundId: string, input: ExitInput, userId: strin
       created_by: userId,
     });
     return { exit_id: created.id, cost_basis_amount: cost, gain_amount: input.proceeds_amount - cost };
+  });
+}
+
+// BR-EXIT-08 회수 취소: 취소 표시 + 처분 분개 역분개 (역분개일은 회수일, 결산된 기간이면 오늘).
+// 회수 대금이 빠지면 회수일 이후 현금이 줄어드므로, 이미 쓴 돈이면 취소할 수 없다 (BR-FIN-02)
+export async function cancelExit(fundId: string, exitId: string, reason: string, userId: string) {
+  assertUuid(fundId, "조합을");
+  assertUuid(exitId, "회수를");
+  await sql.begin(async (tx) => {
+    const t = tx as unknown as typeof sql;
+    const [fund] = await tx<{ status: FundStatus }[]>`select status from funds where id = ${fundId} for update`; // BR-COM-02
+    if (!fund) throw notFound("조합을");
+    if (!EXIT_STATUSES.includes(fund.status)) throw statusNotAllowed("BR-EXIT-08", "회수 취소는 운용·해산 중인 조합에서 합니다");
+    const [exit] = await tx<{ exit_date: string; proceeds_amount: number; cancelled_at: Date | null; company_name: string }[]>`
+      select x.exit_date, x.proceeds_amount, x.cancelled_at, c.name as company_name
+      from exits x join companies c on c.id = x.company_id where x.id = ${exitId} and x.fund_id = ${fundId} for update of x
+    `;
+    if (!exit) throw notFound("회수를");
+    if (exit.cancelled_at) throw new AppError(409, "ALREADY_REVERSED", `이미 취소된 회수입니다 (${formatDate(exit.cancelled_at)})`, "BR-EXIT-08");
+
+    if (exit.proceeds_amount > 0) {
+      const available = await availableCashOn(t, fundId, exit.exit_date);
+      if (available < exit.proceeds_amount) {
+        throw new AppError(422, "INSUFFICIENT_CASH", `회수 대금(${formatKRWFull(exit.proceeds_amount)})이 이미 분배·투자 등에 쓰여 취소하면 현금이 음수가 됩니다`, "BR-EXIT-08", {
+          available_amount: available,
+        });
+      }
+    }
+    await tx`update exits set cancelled_at = now(), cancelled_by = ${userId}, cancel_reason = ${reason} where id = ${exitId}`;
+    await reverseSourceJournal(t, "exit", exitId, await correctionDate(t, fundId, exit.exit_date), `${exit.company_name} 회수 취소: ${reason}`, userId);
   });
 }

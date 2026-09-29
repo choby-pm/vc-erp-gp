@@ -36,6 +36,14 @@ export const voteSchema = z.object({
   choice: z.enum(VOTE_CHOICES, { error: "찬성·반대·기권 중에서 고르세요" }),
 });
 
+// LP 연동 API: 안건별 찬반을 한 번에 제출 (BR-VOTE-07)
+export const lpVotesSchema = z.object({
+  votes: z
+    .array(z.object({ agenda_id: z.uuid({ error: "안건 ID가 올바르지 않습니다" }), choice: voteSchema.shape.choice }), { error: "votes 배열을 보내세요" })
+    .min(1, "안건을 하나 이상 투표하세요")
+    .refine((vs) => new Set(vs.map((v) => v.agenda_id)).size === vs.length, "같은 안건을 두 번 보낼 수 없습니다"),
+});
+
 export type CreateMeetingInput = z.infer<typeof createMeetingSchema>;
 export type UpdateMeetingInput = z.infer<typeof updateMeetingSchema>;
 export type AgendaInput = z.infer<typeof agendaSchema>;

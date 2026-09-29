@@ -156,8 +156,23 @@ erDiagram
 | ❗✨ `email` | text | 로그인 ID |
 | ❗ `name` | text | |
 | ❗ `password_hash` | text | 비밀번호를 복원할 수 없게 변환한 값. 원문은 저장하지 않는다 |
+| ❗ `role` | text | `admin` / `manager`(기본) / `finance` / `viewer` (014, D42) |
 
-> **설계 의도**: MVP는 권한 구분 없이 GP 사용자 1종만 둔다. LP 계정은 LP 시스템 DB에 둔다 (D2).
+> **설계 의도**: 역할은 계정당 하나(D42, 권한 규칙은 코드 한곳). LP 계정은 LP 시스템 DB에 둔다 (D2).
+
+#### `audit_logs` — 감사 로그 (014, D42)
+| 컬럼 | 자료형 | 설명 |
+|---|---|---|
+| 🔑 `id`, ❗ `occurred_at` | | |
+| ❗ `actor_type` | text | `user` / `lp_system` / `cron` |
+| 🔗 `user_id`, `user_name`, `user_role` | | 기록 당시 이름·역할 스냅샷 |
+| ❗ `method`, ❗ `path`, ❗ `action` | text | `action` 은 ID를 뺀 주소 모양 (`POST /funds/:id/exits`) |
+| `fund_id` | uuid | 주소에서 읽은 조합 |
+| ❗ `status`, `error_code` | | 응답 코드·오류 코드 |
+| `detail` | jsonb | 로그인 시도 이메일, LP id 등 (요청 본문은 저장하지 않음) |
+| `ip`, `user_agent` | text | |
+
+> 추가만 가능 (수정·삭제 트리거로 차단).
 
 #### `limited_partners` — 출자자 기준 정보
 | 컬럼 | 자료형 | 설명 |
@@ -475,10 +490,11 @@ erDiagram
 #### `fiscal_closings` — 사업연도 결산
 | 컬럼 | 자료형 | 설명 |
 |---|---|---|
-| ❗🔗 `fund_id`, ❗ `fiscal_year` | | `(fund_id, fiscal_year)` ✨ |
+| ❗🔗 `fund_id`, ❗ `fiscal_year` | | 재개하지 않은 결산 중 `(fund_id, fiscal_year)` ✨ (011) |
 | ❗ `period_start`, `period_end` | date | 결산 기간. `period_end` 까지 분개 잠금 |
 | 🔗 `closing_entry_id` | uuid → journal_entries | 손익 대체 분개 |
 | ❗ `net_income` | bigint | 그 사업연도 순이익 |
+| `reopened_at`, 🔗 `reopened_by`, `reopen_reason` | | 결산 재개 (011, BR-ACC-07). 재개한 결산은 잠그지 않고 이력으로만 남는다 |
 
 ### 4-8. 총회·보고
 
@@ -512,6 +528,7 @@ erDiagram
 | ❗🔗 `member_id` | uuid → fund_members | `(agenda_id, member_id)` ✨ |
 | ❗ `choice` | text | `for`(찬성) / `against`(반대) / `abstain`(기권) |
 | ❗ `voting_power_ratio` | numeric | 의결 당시 의결권 비율 (스냅샷) |
+| ❗ `channel` | text | `gp`(GP 입력) / `lp_system`(LP 직접, 012, BR-VOTE-07). LP 직접이면 `created_by` 없음 |
 
 > **설계 의도**: 결성총회도 `general_meetings` 한 종류로 다룬다.
 > 결성·규약 변경·해산처럼 조합 상태를 바꾸는 결정은 모두 **가결된 안건**을 근거로 남긴다.
@@ -543,6 +560,7 @@ erDiagram
 | ❗ `proceeds_amount` | bigint | 회수 금액. 상각이면 0 |
 | ❗ `cost_basis_amount` | bigint | 이번 회수에 해당하는 투자 원금 ⚠️ 일부 회수 시 원금 배분 방식 |
 | `memo` | text | 매각 상대·조건 등 (010) |
+| `cancelled_at`, 🔗 `cancelled_by`, `cancel_reason` | | 회수 취소 (011, BR-EXIT-08). 취소된 회수는 `v_portfolio`·현금 합계에서 빠진다 |
 
 > **설계 의도**: 한 기업을 여러 번에 나눠 회수할 수 있어서, 회수마다 **그만큼의 원금**을 함께 기록한다.
 > 회수 배수(MOIC) = `proceeds_amount ÷ cost_basis_amount` 로 계산한다.
@@ -556,8 +574,9 @@ erDiagram
 | ❗ `distribution_date` | date | |
 | ❗ `distributable_amount` | bigint | 이번에 분배할 총액 |
 | ❗ `is_final` | boolean | 청산 시 최종 분배 여부 |
-| ❗ `status` | text | `draft`(계산) / `confirmed`(확정) / `paid`(지급 완료) |
+| ❗ `status` | text | `draft`(계산) / `confirmed`(확정) / `paid`(지급 완료) / `cancelled`(취소, 011) |
 | `memo` | text | (010) |
+| `cancelled_at`, 🔗 `cancelled_by`, `cancel_reason` | | 분배 취소 (011, BR-DIST-12). 최종 분배 유일성은 취소된 것을 빼고 본다 |
 | `confirmed_at` · `paid_at` | timestamptz | 확정·지급 처리 시각 (010) |
 
 > 진행 중(`draft`·`confirmed`)인 분배는 조합당 1건, 최종 분배(`is_final`)도 조합당 1건 — 부분 유일 인덱스 (BR-DIST-08, 010).
@@ -618,6 +637,24 @@ erDiagram
 > - 데이터는 저장됐는데 알림이 안 가는 일, 알림은 갔는데 데이터가 없는 일이 생기지 않는다
 > - LP 시스템이 잠시 꺼져 있어도 `pending` 으로 남아 있다가 나중에 다시 보낸다
 > - 받는 쪽은 이벤트 `id` 로 중복 수신을 걸러낸다
+
+#### `scheduled_jobs` — 주기 작업 잠금 (013, D41)
+| 컬럼 | 자료형 | 설명 |
+|---|---|---|
+| 🔑 `name` | text | 작업 이름 (`dispatch_events`) |
+| ❗ `locked_until` | timestamptz | 이 시각까지 한 곳에서만 실행 (임대). 끝나면 지금으로 되돌린다 |
+| `last_trigger`, `last_started_at`, `last_finished_at`, `last_result`, `last_error` | | 마지막 실행 (`cron` / `manual`) |
+
+#### `attachments` — 파일 첨부 (013, D41)
+| 컬럼 | 자료형 | 설명 |
+|---|---|---|
+| 🔑 `id` | uuid | |
+| ❗🔗 `fund_id` | uuid → funds | |
+| ❗ `target_type`, ❗ `target_id` | text, uuid | `fund_terms`(규약 버전) / `report`(정기 보고) |
+| ❗ `file_name`, `content_type`, `size_bytes` | | 올린 파일 정보 (PDF, 4MB까지) |
+| ❗ `blob_pathname` | text ✨ | 비공개 Vercel Blob 경로. 화면·LP에 노출하지 않는다 |
+| 🔗 `uploaded_by`, `created_at` | | |
+| `deleted_at`, 🔗 `deleted_by` | | 삭제 표시 (파일·기록은 남김) |
 
 ### 4-10b. 구성원·운용 인력 (D31, D32)
 

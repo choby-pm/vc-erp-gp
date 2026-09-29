@@ -208,8 +208,8 @@ export const EXIT_TYPE_LABEL: Record<ExitType, string> = {
 };
 
 // 분배 (BR-DIST-04~06)
-export type DistributionStatus = "draft" | "confirmed" | "paid";
-export const DISTRIBUTION_STATUS_LABEL: Record<DistributionStatus, string> = { draft: "초안", confirmed: "확정", paid: "지급 완료" };
+export type DistributionStatus = "draft" | "confirmed" | "paid" | "cancelled";
+export const DISTRIBUTION_STATUS_LABEL: Record<DistributionStatus, string> = { draft: "초안", confirmed: "확정", paid: "지급 완료", cancelled: "취소" };
 
 // 워터폴 단계 (04 업무 규칙 10-1)
 export const DISTRIBUTION_COMPONENTS = ["return_of_capital", "hurdle_return", "profit", "carried_interest"] as const;

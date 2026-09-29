@@ -16,7 +16,7 @@ export function DispatchButton({ configured }: { configured: boolean }) {
     const json = await res.json().catch(() => ({}));
     setBusy(false);
     const r = json.data;
-    setMessage(!res.ok ? (json.error?.message ?? "전송하지 못했습니다") : !r.configured ? "웹훅 주소가 설정되지 않아 보내지 않았습니다" : `전송 ${r.delivered}건 · 실패 ${r.failed}건 · 순서 대기 ${r.waiting}건`);
+    setMessage(!res.ok ? (json.error?.message ?? "전송하지 못했습니다") : !r.configured ? "웹훅 주소가 설정되지 않아 보내지 않았습니다" : r.skipped ? "다른 곳에서 이미 전송 중입니다. 잠시 뒤 다시 확인하세요" : `전송 ${r.delivered}건 · 실패 ${r.failed}건 · 순서 대기 ${r.waiting}건`);
     router.refresh();
   }
 

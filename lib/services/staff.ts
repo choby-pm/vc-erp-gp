@@ -1,6 +1,7 @@
 import { sql } from "@/lib/db";
 import { AppError, assertUuid, notFound } from "@/lib/api/errors";
 import { generateTempPassword, hashPassword } from "@/lib/auth/password";
+import type { Role } from "@/lib/auth/permissions";
 import type { FundStatus, ManagerRole } from "@/lib/labels";
 import type { StaffInput } from "@/lib/schemas/staff";
 
@@ -18,13 +19,14 @@ export type StaffListItem = {
   left_date: string | null;
   has_account: boolean;
   account_disabled: boolean;
+  account_role: Role | null; // 로그인 계정의 권한 (D42)
   active_fund_count: number; // 현재 운용 인력으로 담당 중인 조합 수
 };
 
-export type StaffDetail = Omit<StaffListItem, "has_account" | "account_disabled" | "active_fund_count"> & {
+export type StaffDetail = Omit<StaffListItem, "has_account" | "account_disabled" | "account_role" | "active_fund_count"> & {
   email: string | null;
   phone: string | null;
-  account: { user_id: string; login_email: string; disabled_at: Date | null } | null;
+  account: { user_id: string; login_email: string; disabled_at: Date | null; role: Role } | null;
   assignments: {
     fund_id: string;
     fund_name: string;
@@ -40,6 +42,7 @@ export async function listStaff(status: "active" | "left" | "all" = "active") {
     select s.id, s.employee_no, s.name, s.position, s.department, s.hired_date, s.left_date,
            s.user_id is not null                           as has_account,
            coalesce(u.disabled_at is not null, false)      as account_disabled,
+           u.role                                          as account_role,
            (select count(*)::int from fund_managers m where m.staff_id = s.id and m.end_date is null)
                                                            as active_fund_count
     from staff s
@@ -55,7 +58,7 @@ export async function getStaff(staffId: string): Promise<StaffDetail> {
   assertUuid(staffId, "구성원을");
   const [row] = await sql`
     select s.id, s.employee_no, s.name, s.position, s.department, s.email, s.phone, s.hired_date, s.left_date,
-           u.id as user_id, u.email as login_email, u.disabled_at
+           u.id as user_id, u.email as login_email, u.disabled_at, u.role
     from staff s
     left join users u on u.id = s.user_id
     where s.id = ${staffId}
@@ -70,10 +73,10 @@ export async function getStaff(staffId: string): Promise<StaffDetail> {
     order by m.end_date is not null, m.start_date desc
   `;
 
-  const { user_id, login_email, disabled_at, ...staff } = row;
+  const { user_id, login_email, disabled_at, role, ...staff } = row;
   return {
     ...(staff as StaffDetail),
-    account: user_id ? { user_id, login_email, disabled_at } : null,
+    account: user_id ? { user_id, login_email, disabled_at, role } : null,
     assignments,
   };
 }
@@ -227,5 +230,16 @@ export async function setAccountEnabled(staffId: string, enabled: boolean, curre
       assertNotSelf(staff.user_id, currentUserId);
       await disableAccount(t, staff.user_id);
     }
+  });
+}
+
+// BR-AUTH-03 권한 변경: 관리자만 (permissions.ts), 자기 자신의 권한은 바꿀 수 없다.
+// 부르는 사람이 관리자이고 자기 자신은 바꿀 수 없으므로, 관리자가 0명이 되는 일은 생기지 않는다
+export async function setAccountRole(staffId: string, role: Role, currentUserId: string) {
+  await sql.begin(async (tx) => {
+    const staff = await lockStaff(tx as unknown as typeof sql, staffId);
+    if (!staff.user_id) throw new AppError(409, "NO_ACCOUNT", "로그인 계정이 없습니다", "BR-STF-03");
+    if (staff.user_id === currentUserId) throw new AppError(409, "CANNOT_CHANGE_OWN_ROLE", "자기 자신의 권한은 바꿀 수 없습니다. 다른 관리자에게 요청하세요", "BR-AUTH-03");
+    await tx`update users set role = ${role} where id = ${staff.user_id}`;
   });
 }

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { formatDate, formatKRWFull } from "@/lib/format";
 import type { DistributionStatus } from "@/lib/labels";
 
-// 분배 초안 삭제 · 확정(LP 통지) · 지급(원장·분개) 버튼 (BR-DIST-05, 06)
+// 분배 초안 삭제 · 확정(LP 통지) · 지급(원장·분개) · 취소(BR-DIST-12) 버튼 (BR-DIST-05, 06)
 
 const today = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
 
@@ -31,9 +31,15 @@ export default function DistributionActions({
 
   async function call(path: string, method: "POST" | "DELETE", confirmMessage: string, after?: string) {
     if (!window.confirm(confirmMessage)) return;
+    await send(path, method, undefined, after);
+  }
+
+  async function send(path: string, method: "POST" | "DELETE", body?: object, after?: string) {
     setBusy(true);
     setError(null);
-    const res = await fetch(base + path, { method, headers: method === "POST" ? { "Idempotency-Key": crypto.randomUUID() } : undefined });
+    const headers: Record<string, string> = method === "POST" ? { "Idempotency-Key": crypto.randomUUID() } : {};
+    if (body) headers["Content-Type"] = "application/json";
+    const res = await fetch(base + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
     const json = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
@@ -44,7 +50,17 @@ export default function DistributionActions({
     router.refresh();
   }
 
-  if (status === "paid") return null;
+  function cancel() {
+    const effect =
+      status === "paid"
+        ? "조합원 원장에 취소 행(음수)이 오늘 날짜로 기록되고 분배 분개가 역분개됩니다. 지급한 돈은 조합원에게서 돌려받아야 합니다."
+        : "지급하지 않고 취소 상태로 남습니다.";
+    const reason = window.prompt(`${title} ${formatKRWFull(amount)}을 취소합니다.\n${effect}\nLP 조합원에게 취소 통지가 발송됩니다. 취소 사유를 입력하세요.`);
+    if (!reason?.trim()) return;
+    void send("/cancel", "POST", { reason });
+  }
+
+  if (status === "cancelled") return null;
   const notYet = status === "confirmed" && date > today();
 
   return (
@@ -79,6 +95,16 @@ export default function DistributionActions({
             className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
           >
             {busy ? "처리 중…" : "지급 처리"}
+          </button>
+        )}
+        {(status === "confirmed" || status === "paid") && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={cancel}
+            className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60"
+          >
+            분배 취소
           </button>
         )}
       </div>

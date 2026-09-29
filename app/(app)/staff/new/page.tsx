@@ -1,9 +1,13 @@
 import Link from "next/link";
+import NoPermission from "@/components/no-permission";
 import StaffForm from "@/components/staff-form";
+import { getCurrentUser } from "@/lib/auth/session";
 
 export const metadata = { title: "구성원 등록 · VC ERP" };
 
-export default function NewStaffPage() {
+export default async function NewStaffPage() {
+  const me = await getCurrentUser();
+  if (me?.role !== "admin") return <NoPermission area="구성원 등록" role={me?.role} />;
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>

@@ -12,12 +12,15 @@ import { writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import postgres from 'postgres';
 
+// 권한 (D42, lib/auth/permissions.ts 와 같은 이름)
+const ROLE_LABEL = { admin: '관리자', manager: '운용', finance: '재무', viewer: '조회' };
+
 const STAFF = [
-  { employee_no: 'GP-2015-001', name: '김도윤', position: '대표이사', department: '경영진', email: 'doyun.kim@vc-erp.dev', phone: '010-1000-0001', hired_date: '2015-03-02' },
-  { employee_no: 'GP-2017-002', name: '이서준', position: '파트너', department: '투자본부', email: 'seojun.lee@vc-erp.dev', phone: '010-1000-0002', hired_date: '2017-07-03' },
-  { employee_no: 'GP-2019-004', name: '박서연', position: '수석심사역', department: '투자본부', email: 'demo@vc-erp.dev', phone: '010-1000-0004', hired_date: '2019-01-07' },
-  { employee_no: 'GP-2020-005', name: '정하은', position: '관리팀장', department: '경영지원팀', email: 'haeun.jung@vc-erp.dev', phone: '010-1000-0005', hired_date: '2020-04-01' },
-  { employee_no: 'GP-2021-007', name: '최민재', position: '심사역', department: '투자본부', email: 'minjae.choi@vc-erp.dev', phone: '010-1000-0007', hired_date: '2021-09-01' },
+  { employee_no: 'GP-2015-001', name: '김도윤', position: '대표이사', department: '경영진', email: 'doyun.kim@vc-erp.dev', phone: '010-1000-0001', hired_date: '2015-03-02', role: 'admin' },
+  { employee_no: 'GP-2017-002', name: '이서준', position: '파트너', department: '투자본부', email: 'seojun.lee@vc-erp.dev', phone: '010-1000-0002', hired_date: '2017-07-03', role: 'manager' },
+  { employee_no: 'GP-2019-004', name: '박서연', position: '수석심사역', department: '투자본부', email: 'demo@vc-erp.dev', phone: '010-1000-0004', hired_date: '2019-01-07', role: 'admin' }, // 데모 버튼: 모든 화면을 둘러볼 수 있게
+  { employee_no: 'GP-2020-005', name: '정하은', position: '관리팀장', department: '경영지원팀', email: 'haeun.jung@vc-erp.dev', phone: '010-1000-0005', hired_date: '2020-04-01', role: 'finance' },
+  { employee_no: 'GP-2021-007', name: '최민재', position: '심사역', department: '투자본부', email: 'minjae.choi@vc-erp.dev', phone: '010-1000-0007', hired_date: '2021-09-01', role: 'manager' },
 ];
 
 // lib/auth/password.ts 와 같은 형식
@@ -39,9 +42,9 @@ try {
     for (const s of STAFF) {
       const password = tempPassword();
       const [user] = await tx`
-        insert into users (email, name, password_hash)
-        values (${s.email}, ${s.name}, ${await hashPassword(password)})
-        on conflict (email) do update set name = excluded.name, password_hash = excluded.password_hash, disabled_at = null
+        insert into users (email, name, password_hash, role)
+        values (${s.email}, ${s.name}, ${await hashPassword(password)}, ${s.role})
+        on conflict (email) do update set name = excluded.name, password_hash = excluded.password_hash, disabled_at = null, role = excluded.role
         returning id
       `;
       await tx`
@@ -57,7 +60,7 @@ try {
   });
 
   const rows = accounts
-    .map((a) => `| ${a.employee_no} | ${a.name} | ${a.position} | \`${a.email}\` | \`${a.password}\` |${a.email === 'demo@vc-erp.dev' ? ' 데모 버튼 계정 |' : ' |'}`)
+    .map((a) => `| ${a.employee_no} | ${a.name} | ${a.position} | ${ROLE_LABEL[a.role]} | \`${a.email}\` | \`${a.password}\` |${a.email === 'demo@vc-erp.dev' ? ' 데모 버튼 계정 |' : ' |'}`)
     .join('\n');
   await writeFile(
     'demo-accounts.md',
@@ -70,8 +73,8 @@ try {
 - 접속 주소 (로컬): http://localhost:3100
 - 로그인 화면의 **데모 계정으로 둘러보기** 버튼 = 박서연 수석심사역 계정
 
-| 사번 | 이름 | 직위 | 로그인 ID | 비밀번호 | 비고 |
-|---|---|---|---|---|---|
+| 사번 | 이름 | 직위 | 권한 | 로그인 ID | 비밀번호 | 비고 |
+|---|---|---|---|---|---|---|
 ${rows}
 `,
   );

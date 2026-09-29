@@ -4,11 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import LogoutButton from "@/components/logout-button";
+import { ROLE_LABEL, type Role } from "@/lib/auth/permissions";
 import { SIDEBAR_FOLDED_COOKIE } from "@/lib/ui-prefs";
 
 // 전체 메뉴 사이드바
 // · 넓은 화면: 왼쪽 고정. 로고 옆 버튼으로 접으면 아이콘만 보이는 좁은 폭이 된다 (쿠키에 기억 → 새로고침해도 유지, 깜빡임 없음)
 // · 좁은 화면: ☰ 버튼으로 여닫는다
+// · "시스템" 메뉴(LP 연동·감사 로그)는 관리자에게만 보인다 (D42)
 
 type Item = { href: string; label: string; icon: React.ReactNode; also?: string[] }; // also: 같은 메뉴로 보는 다른 경로
 
@@ -21,7 +23,7 @@ const icon = (d: string) => (
 // 둥근 사각형 테두리 + 왼쪽 사이드바 칸 구분선
 const PANEL = "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M9 3v18";
 
-const SECTIONS: { title: string; items: Item[] }[] = [
+const SECTIONS: { title: string; items: Item[]; adminOnly?: boolean }[] = [
   {
     title: "조합 운용",
     items: [
@@ -39,17 +41,20 @@ const SECTIONS: { title: string; items: Item[] }[] = [
   },
   {
     title: "시스템",
+    adminOnly: true,
     items: [
       {
         href: "/integrations",
         label: "LP 연동",
         icon: icon("M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"),
       },
+      { href: "/audit-logs", label: "감사 로그", icon: icon("M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h5") },
     ],
   },
 ];
 
-export default function AppSidebar({ userName, initialFolded }: { userName: string; initialFolded: boolean }) {
+export default function AppSidebar({ userName, userRole, initialFolded }: { userName: string; userRole: Role; initialFolded: boolean }) {
+  const sections = SECTIONS.filter((s) => !s.adminOnly || userRole === "admin");
   const pathname = usePathname();
   const [open, setOpen] = useState(false); // 좁은 화면 메뉴
   const [folded, setFolded] = useState(initialFolded); // 넓은 화면 접기
@@ -62,7 +67,7 @@ export default function AppSidebar({ userName, initialFolded }: { userName: stri
 
   const renderNav = (compact: boolean) => (
     <nav className={`flex flex-1 flex-col overflow-y-auto py-4 ${compact ? "gap-3 px-2" : "gap-6 px-3"}`}>
-      {SECTIONS.map((section, i) => (
+      {sections.map((section, i) => (
         <div key={section.title}>
           {compact ? (
             i > 0 && <div className="mx-2 mb-3 border-t border-slate-200" />
@@ -99,14 +104,16 @@ export default function AppSidebar({ userName, initialFolded }: { userName: stri
   const renderFooter = (compact: boolean) =>
     compact ? (
       <div className="flex flex-col items-center gap-2 border-t border-slate-200 py-3">
-        <span title={userName} className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700">
+        <span title={`${userName} · ${ROLE_LABEL[userRole]}`} className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700">
           {userName.slice(0, 1)}
         </span>
         <LogoutButton compact />
       </div>
     ) : (
       <div className="flex items-center justify-between gap-2 border-t border-slate-200 px-4 py-3 text-sm">
-        <span className="truncate text-slate-700">{userName}</span>
+        <span className="truncate text-slate-700">
+          {userName} <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">{ROLE_LABEL[userRole]}</span>
+        </span>
         <LogoutButton />
       </div>
     );
