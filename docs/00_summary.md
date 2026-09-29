@@ -23,7 +23,8 @@
 | R8 | 정정: 회수 취소(처분 분개 역분개), 분배 취소(원장 취소 행 + 역분개 + LP 통지), 결산 재개(결산 분개 역분개) | 회수 · 분배 상세 · 결산 |
 | R9 | LP 직접 투표: LP 연동 API로 찬반 제출, GP 화면에 "LP 직접" 표시(GP 수정 불가) | 총회 · LP 연동 API |
 | R10 | 이벤트 자동 전송(Vercel Cron, 하루 1회 + 실행 잠금), 규약 원문·보고서 PDF 첨부(비공개 Vercel Blob, LP 내려받기) | LP 연동 · 규약 · 정기 보고 |
-| R11 | 역할별 권한(관리자·운용·재무·조회, 서버 한곳에서 검사, 메뉴 숨김), 감사 로그(모든 쓰기·로그인·거부 시도, 수정 불가), 배포 환경 데모는 조회 전용 | 구성원 · 감사 로그 |
+| R11 | 역할별 권한(관리자·운용·재무·조회, 서버 한곳에서 검사, 메뉴 숨김), 감사 로그(모든 쓰기·로그인·거부 시도, 수정 불가) | 구성원 · 감사 로그 |
+| R12 | 배포: 서버를 DB와 같은 싱가포르로(화면 15초 → 0.3초), 로딩 화면, 쿼리 병렬화, 데모 전용 DB(매일 초기화, 관리자로 체험) | 전체 |
 
 규모: 마이그레이션 15개, 테이블 37개, 계산용 뷰, GP 내부 API 라우트 94개 + 주기 작업 1개, LP 연동 API 13개.
 
@@ -98,6 +99,7 @@ npm run dev
 
 `.env.local` 에 `DATABASE_URL`, LP 연동용 `LP_SYSTEM_API_KEY`, `LP_WEBHOOK_SECRET`, `LP_SYSTEM_WEBHOOK_URL`(비우면 이벤트는 대기)을 둔다.
 배포 환경에는 추가로 `CRON_SECRET`(이벤트 자동 전송, `vercel.ts` 의 crons)과 Vercel Blob 스토어 연결(`BLOB_STORE_ID` 또는 `BLOB_READ_WRITE_TOKEN`, 파일 첨부)이 필요하다. 없으면 자동 전송·파일 올리기만 꺼진다.
+배포 사이트는 데모 전용 DB를 쓴다: `APP_DATABASE_URL`(Neon `demo` 브랜치), 매일 초기화용 `NEON_API_KEY`·`DEMO_BRANCH_ID`·`DEMO_SEED_BRANCH_ID`, 파일 경로 접두어 `BLOB_PATH_PREFIX=demo/`. 마이그레이션을 추가했으면 `npm run db:migrate` 뒤 `npm run db:demo-refresh` 로 데모 DB에도 반영한다.
 
 ## 9. 남은 과제 (고도화)
 

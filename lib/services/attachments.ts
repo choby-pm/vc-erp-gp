@@ -72,7 +72,8 @@ export async function uploadAttachment(fundId: string, type: AttachmentTarget, t
   const fileName = (file.name || "document.pdf").replace(/[\\/\r\n"]/g, "_").slice(0, 200);
 
   const id = randomUUID();
-  const pathname = `funds/${fundId}/${type}/${targetId}/${id}.pdf`;
+  // 배포 사이트(데모 DB)의 파일은 접두어(demo/) 아래에 둔다. 데모 초기화 때 이 접두어만 지운다 (D44)
+  const pathname = `${process.env.BLOB_PATH_PREFIX ?? ""}funds/${fundId}/${type}/${targetId}/${id}.pdf`;
   await put(pathname, bytes, { access: "private", contentType: "application/pdf", addRandomSuffix: false });
   try {
     await sql`
