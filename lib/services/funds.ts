@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { sql } from "@/lib/db";
 import { AppError, assertUuid, notFound, statusNotAllowed } from "@/lib/api/errors";
 import { formatKRW } from "@/lib/format";
@@ -105,33 +106,45 @@ export async function listFunds() {
   `;
 }
 
+// 조합 화면 공통 틀(이름·상태·탭)에 필요한 것만 한 번에. 같은 요청 안에서는 한 번만 조회한다 (layout + page)
+export const getFundHeader = cache(async (fundId: string) => {
+  assertUuid(fundId, "조합을");
+  const [fund] = await sql<{ id: string; name: string; fund_type: FundType; status: FundStatus; formation_date: string | null }[]>`
+    select id, name, fund_type, status, formation_date from funds where id = ${fundId}
+  `;
+  if (!fund) throw notFound("조합을");
+  return { ...fund, editable: EDITABLE_FUND_STATUSES.includes(fund.status) };
+});
+
 export async function getFund(fundId: string): Promise<FundDetail> {
   assertUuid(fundId, "조합을");
 
-  const [fund] = await sql`
-    select f.id, f.name, f.fund_type, f.gp_type, f.status, f.target_amount, f.term_years, f.investment_period_years,
-           f.formation_date, f.registration_applied_date, f.registration_completed_date, f.created_at,
-           s.total_commitment_amount, s.total_paid_amount, s.maturity_date, s.investment_period_end_date
-    from funds f
-    join v_fund_summary s on s.fund_id = f.id
-    where f.id = ${fundId}
-  `;
-  if (!fund) throw notFound("조합을");
-
   // BR-TERM-04: 오늘 적용되는 규약 = 적용일이 오늘 이전인 버전 중 최신. 적용일이 아직 오지 않은 새 버전은 따로 알려준다
+  // 세 조회는 서로 기다릴 필요가 없어 한꺼번에 보낸다 (DB 왕복 시간 절약)
   const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
-  const [terms] = await sql`
-    select version, primary_purpose, unit_amount, primary_purpose_min_ratio, gp_commitment_min_ratio,
-           management_fee_rate, management_fee_rate_after, carry_rate, hurdle_rate, quorum_ratio, effective_date
-    from fund_terms
-    where fund_id = ${fundId}
-    order by (effective_date <= ${today}) desc, version desc
-    limit 1
-  `;
-  const [scheduled] = await sql<{ version: number; effective_date: string }[]>`
-    select version, effective_date from fund_terms where fund_id = ${fundId} and effective_date > ${today} and version > 1
-    order by version desc limit 1
-  `;
+  const [[fund], [terms], [scheduled]] = await Promise.all([
+    sql`
+      select f.id, f.name, f.fund_type, f.gp_type, f.status, f.target_amount, f.term_years, f.investment_period_years,
+             f.formation_date, f.registration_applied_date, f.registration_completed_date, f.created_at,
+             s.total_commitment_amount, s.total_paid_amount, s.maturity_date, s.investment_period_end_date
+      from funds f
+      join v_fund_summary s on s.fund_id = f.id
+      where f.id = ${fundId}
+    `,
+    sql`
+      select version, primary_purpose, unit_amount, primary_purpose_min_ratio, gp_commitment_min_ratio,
+             management_fee_rate, management_fee_rate_after, carry_rate, hurdle_rate, quorum_ratio, effective_date
+      from fund_terms
+      where fund_id = ${fundId}
+      order by (effective_date <= ${today}) desc, version desc
+      limit 1
+    `,
+    sql<{ version: number; effective_date: string }[]>`
+      select version, effective_date from fund_terms where fund_id = ${fundId} and effective_date > ${today} and version > 1
+      order by version desc limit 1
+    `,
+  ]);
+  if (!fund) throw notFound("조합을");
 
   return {
     ...(fund as unknown as FundListItem),

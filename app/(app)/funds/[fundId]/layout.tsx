@@ -4,12 +4,12 @@ import FundTabs from "@/components/fund-tabs";
 import { FundStatusBadge } from "@/components/fund-status";
 import { FUND_TYPE_LABEL } from "@/lib/labels";
 import { loadOrNotFound } from "@/lib/page-helpers";
-import { getFund } from "@/lib/services/funds";
+import { getFundHeader } from "@/lib/services/funds";
 
 // 조합 상세 공통 틀: 조합 이름·상태 + 업무 탭. 하위 화면은 탭 아래 내용만 그린다
 export default async function FundLayout({ children, params }: LayoutProps<"/funds/[fundId]">) {
   const { fundId } = await params;
-  const fund = await loadOrNotFound(() => getFund(fundId));
+  const fund = await loadOrNotFound(() => getFundHeader(fundId));
 
   return (
     <div className="space-y-6">
