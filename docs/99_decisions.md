@@ -264,3 +264,13 @@
   - **서버 지역**: `vercel.ts` 의 `regions: ["sin1"]` 로 DB와 같은 싱가포르. 로딩 화면(`loading.tsx`)과 쿼리 병렬화를 함께 해 배포 사이트 화면이 0.3초 안팎이 됐다.
 - **다른 선택지**: 같은 DB에서 조회 전용 유지(D43, 체험 불가), 데모 데이터를 SQL로 지우고 다시 넣기(원장·분개·감사 로그는 삭제 금지 트리거가 있어 복잡), 별도 Neon 프로젝트(무료 한도·관리 부담).
 - **한계** ⚠️: 초기화 시각에 데모를 쓰던 사람은 다시 로그인해야 한다. main 에 넣은 테스트 데이터도 `db:demo-refresh` 때 데모로 복사되므로, 실행 전에 main 상태를 확인한다.
+
+## D45. LP 기관용 ERP 연동을 위한 LP 연동 API 보완 (2026-09-29 제안, 구현 예정)
+
+- **배경**: LP 시스템을 LP 기관용 ERP(`vc-erp/lp`, L1)로 만들기로 했다. LP ERP가 출자 제안을 심사해 GP에 응답하고, 성과 지표·조건 점검을 하려면 지금의 LP 연동 API로는 부족하다 (LP 05 API 설계 5장, L17).
+- **추가할 것** (LP ERP 릴리스 R3에서 구현)
+  1. `GET /lps/{lp_id}/proposals`: 내 출자 제안 목록 + 제안 검토에 필요한 조합 정보. 조합원이 되기 전에도 조회된다 (🟢)
+  2. `PUT /lps/{lp_id}/proposals/{proposal_id}/response`: `reviewing` / `committed`(확약 금액) / `declined`. 같은 요청을 다시 보내면 결과가 같다. `lp_proposals.decided_via`(`gp` / `lp_system`)로 "LP 직접"을 표시 (D40 투표 `channel` 과 같은 방식)
+  3. 보고 응답에 `my.nav_amount` = (보유 기업 평가액 + 현금) × 기준일 지분율, `is_correction`
+  4. 조합 정보 `terms` 에 `primary_purpose_min_ratio`, 운용 인력 지정·교체 시 `fund.updated` 이벤트
+- **원칙**: 기존 LP 연동 API 규칙(API 키, 공개 등급, 감사 로그)을 따른다. 필드 추가는 기존 연동과 호환된다.

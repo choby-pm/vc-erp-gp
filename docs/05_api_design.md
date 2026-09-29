@@ -615,6 +615,8 @@ Authorization: Bearer {LP_SYSTEM_API_KEY}
 
 > **LP 직접 투표** (D40): LP 시스템이 로그인한 LP의 찬반을 `PUT …/votes` 로 제출한다. 소집 후 개최 처리 전(`voting_open = true`)까지 다시 제출할 수 있다. LP가 직접 한 투표는 GP 화면에서 "LP 직접"으로 표시되고 GP가 바꿀 수 없다. 총회·안건 `id` 는 LP가 행동할 대상이라 공개한다 (통지 확인의 `notice_id` 와 같은 원칙).
 
+> **LP 기관용 ERP 연동 보완** (D45, 구현 예정): 출자 제안 목록·응답 API, 보고의 LP 몫 평가액, 규약의 주목적 의무 비율, 운용 인력 변경 이벤트. 상세는 LP 저장소 `docs/05_api_design.md` 5장.
+
 ### 5-3. 응답 예시: 내 원장
 
 `GET /api/lp/v1/lps/{lp_id}/funds/{fund_id}/ledger`
