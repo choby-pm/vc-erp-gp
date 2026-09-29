@@ -1,0 +1,47 @@
+// 데모 DB 새로 고침 (D44)
+//
+// 배포 사이트가 쓰는 데모 DB(Neon demo 브랜치)는 매일 demo-seed 브랜치로 초기화된다.
+// 마이그레이션을 추가했거나 데모 데이터를 바꿨으면, main(개발 DB) → demo-seed → demo 순서로 복사해 반영한다.
+//
+// 사용법
+//   npm run db:migrate          먼저 main 에 마이그레이션
+//   npm run db:demo-refresh     main 의 지금 상태를 데모 원본으로 삼고 데모 DB를 바로 초기화
+//
+// ⚠️ main 에 테스트로 넣은 데이터도 그대로 데모에 들어간다. 데모에 보일 상태인지 확인하고 실행한다
+
+const { NEON_API_KEY, NEON_PROJECT_ID, DEMO_BRANCH_ID, DEMO_SEED_BRANCH_ID } = process.env;
+if (!NEON_API_KEY || !NEON_PROJECT_ID || !DEMO_BRANCH_ID || !DEMO_SEED_BRANCH_ID) {
+  console.error("NEON_API_KEY, NEON_PROJECT_ID, DEMO_BRANCH_ID, DEMO_SEED_BRANCH_ID 가 .env.local 에 필요합니다.");
+  process.exit(1);
+}
+
+const api = (path, body) =>
+  fetch(`https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}${path}`, {
+    method: body ? "POST" : "GET",
+    headers: { Authorization: `Bearer ${NEON_API_KEY}`, "Content-Type": "application/json", Accept: "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  }).then(async (res) => {
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(`${path} 실패 (HTTP ${res.status}): ${json.message ?? ""}`);
+    return json;
+  });
+
+// 앞 작업(브랜치 복원)이 끝나야 다음 복원을 할 수 있다
+async function waitIdle() {
+  for (let i = 0; i < 60; i++) {
+    const { operations } = await api(`/operations?limit=10`);
+    if (!operations.some((o) => ["scheduling", "running"].includes(o.status))) return;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error("Neon 작업이 끝나지 않았습니다");
+}
+
+const { branches } = await api("/branches");
+const main = branches.find((b) => b.default);
+console.log(`1/2 demo-seed ← ${main.name} (지금 상태 복사)`);
+await api(`/branches/${DEMO_SEED_BRANCH_ID}/restore`, { source_branch_id: main.id });
+await waitIdle();
+console.log("2/2 demo ← demo-seed (데모 DB 초기화)");
+await api(`/branches/${DEMO_BRANCH_ID}/restore`, { source_branch_id: DEMO_SEED_BRANCH_ID });
+await waitIdle();
+console.log("✔ 데모 DB를 새로 고쳤습니다");

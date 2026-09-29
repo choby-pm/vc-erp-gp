@@ -9,5 +9,9 @@ import type { VercelConfig } from "@vercel/config/v1";
 export const config: VercelConfig = {
   framework: "nextjs",
   regions: ["sin1"],
-  crons: [{ path: "/api/cron/dispatch-events", schedule: "0 0 * * *" }],
+  // · reset-demo: 데모 DB를 매일 03:00 KST(18:00 UTC)에 원래 데모 데이터로 되돌린다 (D44)
+  crons: [
+    { path: "/api/cron/dispatch-events", schedule: "0 0 * * *" },
+    { path: "/api/cron/reset-demo", schedule: "0 18 * * *" },
+  ],
 };
