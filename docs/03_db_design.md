@@ -158,6 +158,8 @@ erDiagram
 | ❗ `password_hash` | text | 비밀번호를 복원할 수 없게 변환한 값. 원문은 저장하지 않는다 |
 | ❗ `role` | text | `admin` / `manager`(기본) / `finance` / `viewer` (014, D42) |
 
+`sessions.role_cap` (015, D43): 세션 권한 상한. `viewer` 면 계정 역할과 관계없이 조회만 (배포 환경 데모 로그인).
+
 > **설계 의도**: 역할은 계정당 하나(D42, 권한 규칙은 코드 한곳). LP 계정은 LP 시스템 DB에 둔다 (D2).
 
 #### `audit_logs` — 감사 로그 (014, D42)

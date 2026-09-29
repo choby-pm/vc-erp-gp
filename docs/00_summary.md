@@ -23,9 +23,9 @@
 | R8 | 정정: 회수 취소(처분 분개 역분개), 분배 취소(원장 취소 행 + 역분개 + LP 통지), 결산 재개(결산 분개 역분개) | 회수 · 분배 상세 · 결산 |
 | R9 | LP 직접 투표: LP 연동 API로 찬반 제출, GP 화면에 "LP 직접" 표시(GP 수정 불가) | 총회 · LP 연동 API |
 | R10 | 이벤트 자동 전송(Vercel Cron, 하루 1회 + 실행 잠금), 규약 원문·보고서 PDF 첨부(비공개 Vercel Blob, LP 내려받기) | LP 연동 · 규약 · 정기 보고 |
-| R11 | 역할별 권한(관리자·운용·재무·조회, 서버 한곳에서 검사, 메뉴 숨김), 감사 로그(모든 쓰기·로그인·거부 시도, 수정 불가) | 구성원 · 감사 로그 |
+| R11 | 역할별 권한(관리자·운용·재무·조회, 서버 한곳에서 검사, 메뉴 숨김), 감사 로그(모든 쓰기·로그인·거부 시도, 수정 불가), 배포 환경 데모는 조회 전용 | 구성원 · 감사 로그 |
 
-규모: 마이그레이션 14개, 테이블 37개, 계산용 뷰, GP 내부 API 라우트 94개 + 주기 작업 1개, LP 연동 API 13개.
+규모: 마이그레이션 15개, 테이블 37개, 계산용 뷰, GP 내부 API 라우트 94개 + 주기 작업 1개, LP 연동 API 13개.
 
 ## 3. 화면 구조
 
@@ -87,7 +87,7 @@ Next.js 16 (App Router, Route Handlers), TypeScript, Tailwind CSS, PostgreSQL(Ne
 
 ```bash
 npm install
-npm run db:migrate                 # 마이그레이션 001~014
+npm run db:migrate                 # 마이그레이션 001~015
 npm run db:seed && npm run db:seed-staff
 npm run db:seed-sample             # 출자자·구성원·조합 (기획~결성 준비)
 npm run db:seed-sample-deals       # 기업·딜 + 운용 중 조합

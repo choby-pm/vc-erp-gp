@@ -10,20 +10,21 @@ import { SESSION_COOKIE } from "./session-cookie";
 
 const SESSION_DAYS = 7;
 
-export type CurrentUser = { id: string; email: string; name: string; role: Role };
+// role 은 세션 상한(role_cap)을 반영한 실제 권한. role_capped 면 계정 역할보다 낮게 제한된 세션 (D43)
+export type CurrentUser = { id: string; email: string; name: string; role: Role; role_capped: boolean };
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
-export async function createSession(userId: string) {
+export async function createSession(userId: string, options: { roleCap?: "viewer" | null } = {}) {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
   const userAgent = (await headers()).get("user-agent");
 
   await sql`
-    insert into sessions (user_id, token_hash, expires_at, user_agent)
-    values (${userId}, ${hashToken(token)}, ${expiresAt}, ${userAgent})
+    insert into sessions (user_id, token_hash, expires_at, user_agent, role_cap)
+    values (${userId}, ${hashToken(token)}, ${expiresAt}, ${userAgent}, ${options.roleCap ?? null})
   `;
 
   (await cookies()).set(SESSION_COOKIE, token, {
@@ -40,7 +41,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   if (!token) return null;
 
   const [user] = await sql<CurrentUser[]>`
-    select u.id, u.email, u.name, u.role
+    select u.id, u.email, u.name, coalesce(s.role_cap, u.role) as role, s.role_cap is not null as role_capped
     from sessions s
     join users u on u.id = s.user_id
     where s.token_hash = ${hashToken(token)}
