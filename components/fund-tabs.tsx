@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import LinkPending from "@/components/link-pending";
 import { usePathname, useSearchParams } from "next/navigation";
 
 // 조합 상세 탭 (2단계)
@@ -97,6 +98,7 @@ export default function FundTabs({ fundId, formed }: { fundId: string; formed: b
                 >
                   {g.label}
                   {waiting && <span className="rounded bg-slate-100 px-1 text-[10px] font-normal text-slate-400">결성 후</span>}
+                  <LinkPending />
                 </Link>
               </li>
             );
@@ -118,6 +120,7 @@ export default function FundTabs({ fundId, formed }: { fundId: string; formed: b
               >
                 {s.label}
                 {waiting && <span className="text-[10px] font-normal">· 결성 후</span>}
+                <LinkPending />
               </Link>
             </li>
           );

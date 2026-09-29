@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import LinkPending from "@/components/link-pending";
 import LogoutButton from "@/components/logout-button";
 import { ROLE_LABEL, type Role } from "@/lib/auth/permissions";
 import { SIDEBAR_FOLDED_COOKIE } from "@/lib/ui-prefs";
@@ -91,6 +92,7 @@ export default function AppSidebar({ userName, userRole, initialFolded }: { user
                   >
                     {item.icon}
                     <span className={compact ? "sr-only" : ""}>{item.label}</span>
+                    {!compact && <LinkPending />}
                   </Link>
                 </li>
               );

@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { cookies, headers } from "next/headers";
+import { cache } from "react";
 import { sql } from "@/lib/db";
 import type { Role } from "./permissions";
 import { SESSION_COOKIE } from "./session-cookie";
@@ -36,7 +37,8 @@ export async function createSession(userId: string, options: { roleCap?: "viewer
   });
 }
 
-export async function getCurrentUser(): Promise<CurrentUser | null> {
+// 같은 요청 안에서 layout·page·API가 여러 번 불러도 DB는 한 번만 본다
+export const getCurrentUser = cache(async function getCurrentUser(): Promise<CurrentUser | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
@@ -50,7 +52,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       and u.disabled_at is null  -- 계정이 중지되면 기존 세션도 즉시 무효
   `;
   return user ?? null;
-}
+});
 
 export async function destroySession() {
   const cookieStore = await cookies();
