@@ -39,7 +39,16 @@ async function waitIdle() {
 const { branches } = await api("/branches");
 const main = branches.find((b) => b.default);
 console.log(`1/2 demo-seed ← ${main.name} (지금 상태 복사)`);
-await api(`/branches/${DEMO_SEED_BRANCH_ID}/restore`, { source_branch_id: main.id });
+// demo-seed 에 자식 브랜치가 있으면 Neon은 기존 상태를 백업 브랜치로 남기라고 요구한다 (preserve_under_name).
+// 그때만 날짜를 붙인 백업을 남긴다. 백업이 쌓이면 Neon 콘솔에서 지운다 (무료 요금제 브랜치 개수 제한)
+try {
+  await api(`/branches/${DEMO_SEED_BRANCH_ID}/restore`, { source_branch_id: main.id });
+} catch (err) {
+  if (!String(err.message).includes("preserve_under_name")) throw err;
+  const backup = `demo-seed-backup-${new Date().toISOString().slice(0, 10)}`;
+  console.log(`  demo-seed 에 자식 브랜치가 있어 이전 상태를 ${backup} 로 남깁니다`);
+  await api(`/branches/${DEMO_SEED_BRANCH_ID}/restore`, { source_branch_id: main.id, preserve_under_name: backup });
+}
 await waitIdle();
 console.log("2/2 demo ← demo-seed (데모 DB 초기화)");
 await api(`/branches/${DEMO_BRANCH_ID}/restore`, { source_branch_id: DEMO_SEED_BRANCH_ID });
