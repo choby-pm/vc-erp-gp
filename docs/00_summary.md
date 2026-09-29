@@ -94,6 +94,7 @@ npm run db:seed-sample             # 출자자·구성원·조합 (기획~결성
 npm run db:seed-sample-deals       # 기업·딜 + 운용 중 조합
 npm run db:seed-sample-exits       # 회수·분배
 npm run db:seed-sample-lifecycle   # 결성 완료·해산·청산 완료 조합
+npm run db:seed-lp-demo            # LP ERP 데모 기관 2곳 + LP연동 데모 조합 (D45, vc-erp/lp)
 npm run dev
 ```
 
