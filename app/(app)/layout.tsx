@@ -15,6 +15,11 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     <div className="flex flex-1 flex-col bg-slate-50 md:flex-row">
       <AppSidebar userName={user.name} userRole={user.role} initialFolded={folded} />
       <main className="min-w-0 flex-1">
+        {user.role_capped && (
+          <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs text-amber-800">
+            데모 · 조회 전용으로 둘러보는 중입니다. 저장·발송 같은 작업은 막혀 있습니다.
+          </p>
+        )}
         <div className="mx-auto w-full max-w-6xl px-4 py-8 md:px-8">{children}</div>
       </main>
     </div>

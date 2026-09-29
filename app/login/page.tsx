@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { demoIsReadOnly } from "@/lib/auth/demo";
 import { getCurrentUser } from "@/lib/auth/session";
 import LoginForm from "./login-form";
 
@@ -16,7 +17,7 @@ export default async function LoginPage() {
           <h1 className="mt-1 text-2xl font-bold text-slate-900">GP 운용 시스템</h1>
           <p className="mt-2 text-sm text-slate-500">조합 기획부터 청산까지</p>
         </div>
-        <LoginForm />
+        <LoginForm demoReadOnly={demoIsReadOnly()} />
       </div>
     </main>
   );

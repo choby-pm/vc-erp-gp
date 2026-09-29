@@ -5,7 +5,7 @@ import { useState } from "react";
 
 type ApiError = { error?: { message?: string } };
 
-export default function LoginForm() {
+export default function LoginForm({ demoReadOnly }: { demoReadOnly: boolean }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -45,6 +45,7 @@ export default function LoginForm() {
       >
         {pending === "demo" ? "들어가는 중…" : "데모 계정으로 둘러보기 →"}
       </button>
+      {demoReadOnly && <p className="-mt-4 text-center text-xs text-slate-500">데모는 조회 전용입니다. 데이터를 바꾸는 작업은 막혀 있습니다.</p>}
 
       <div className="flex items-center gap-3 text-xs text-slate-400">
         <span className="h-px flex-1 bg-slate-200" />
