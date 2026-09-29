@@ -1,12 +1,15 @@
 import { createHmac } from "node:crypto";
 import { sql } from "@/lib/db";
 import { AppError, assertUuid, notFound } from "@/lib/api/errors";
+import { jobStatus, runExclusive, type JobTrigger } from "@/lib/services/jobs";
 
 // LP 시스템 연동 이벤트 전송 (아웃박스 → 웹훅, D12, 05 API 설계 6장, BR-EVT-03, 04)
 // · 전송 주소(LP_SYSTEM_WEBHOOK_URL)가 없으면 보내지 않고 대기(pending)로 둔다. LP 시스템은 /api/lp/v1/events 로 직접 가져갈 수도 있다
 // · 서명: X-GP-Signature = sha256=HMAC(LP_WEBHOOK_SECRET, 타임스탬프 + "." + 본문)
 // · 실패하면 1분 → 5분 → 30분 → 2시간 → 12시간 뒤 다시 보낸다. 5번 실패하면 failed 로 멈춘다 (GP가 재전송)
 // · 같은 LP에게 가는 이벤트는 순서대로: 앞 이벤트가 전송되지 않았으면 뒤 이벤트는 기다린다
+// · 주기 작업 (D41): Vercel Cron 이 /api/cron/dispatch-events 를 부른다 (무료 요금제라 하루 1회, vercel.ts).
+//   수동 전송과 겹치지 않게 같은 잠금(dispatch_events)을 쓴다
 
 export type EventStatus = "pending" | "delivered" | "failed";
 export type IntegrationEvent = {
@@ -26,12 +29,22 @@ export type IntegrationEvent = {
 const MAX_ATTEMPTS = 5;
 const BACKOFF_MS = [60_000, 5 * 60_000, 30 * 60_000, 2 * 3_600_000, 12 * 3_600_000];
 
+export const DISPATCH_JOB = "dispatch_events";
+export const DISPATCH_SCHEDULE_LABEL = "매일 오전 9시 (무료 요금제: 하루 1회)"; // vercel.ts 의 crons 와 맞춘다
+
 export function integrationConfig() {
   return {
     api_key_configured: Boolean(process.env.LP_SYSTEM_API_KEY),
     webhook_configured: Boolean(process.env.LP_SYSTEM_WEBHOOK_URL),
     secret_configured: Boolean(process.env.LP_WEBHOOK_SECRET),
+    cron_configured: Boolean(process.env.CRON_SECRET),
   };
+}
+
+// 잠금을 잡고 전송한다. 이미 다른 곳(Cron·다른 GP 사용자)이 보내는 중이면 건너뛴다
+export async function dispatchEventsExclusive(trigger: JobTrigger) {
+  const run = await runExclusive(DISPATCH_JOB, trigger, 300, () => dispatchEvents());
+  return run.ran ? { ...run.result, skipped: false } : { configured: true, attempted: 0, delivered: 0, failed: 0, waiting: 0, skipped: true };
 }
 
 export async function listEvents(status?: EventStatus | null, limit = 100) {
@@ -50,7 +63,7 @@ export async function listEvents(status?: EventStatus | null, limit = 100) {
            count(*) filter (where status = 'failed')::int as failed
     from integration_events
   `;
-  return { config: integrationConfig(), counts, events };
+  return { config: integrationConfig(), counts, events, job: await jobStatus(DISPATCH_JOB) };
 }
 
 // 실패 이벤트 재전송: 다시 대기로 돌리고 시도 횟수를 0으로 (BR-EVT-03)

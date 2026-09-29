@@ -10,6 +10,7 @@ const STATUS_COLOR: Record<DistributionStatus, string> = {
   draft: "bg-slate-100 text-slate-600",
   confirmed: "bg-amber-50 text-amber-700",
   paid: "bg-emerald-50 text-emerald-700",
+  cancelled: "bg-rose-50 text-rose-600",
 };
 
 export default async function DistributionsPage(props: PageProps<"/funds/[fundId]/distributions">) {
@@ -63,8 +64,9 @@ export default async function DistributionsPage(props: PageProps<"/funds/[fundId
                   <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_COLOR[d.status]}`}>{DISTRIBUTION_STATUS_LABEL[d.status]}</span>
                   <span className="text-sm text-slate-500">{formatDate(d.distribution_date)}</span>
                   {d.memo && <span className="text-sm text-slate-500">{d.memo}</span>}
+                  {d.cancel_reason && <span className="text-sm text-rose-600">취소 · {d.cancel_reason}</span>}
                   <span className="ml-auto text-right">
-                    <span className="block font-semibold tabular-nums text-slate-900">{formatKRWFull(d.distributable_amount)}</span>
+                    <span className={`block font-semibold tabular-nums ${d.status === "cancelled" ? "text-slate-400 line-through" : "text-slate-900"}`}>{formatKRWFull(d.distributable_amount)}</span>
                     {d.carried_interest_amount > 0 && <span className="block text-xs text-slate-500">성과보수 {formatKRWFull(d.carried_interest_amount)}</span>}
                   </span>
                 </Link>

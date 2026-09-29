@@ -1,9 +1,10 @@
+import ExitCancelButton from "@/components/exit-cancel-button";
 import ExitForm from "@/components/exit-form";
 import { formatDate, formatKRW, formatKRWFull } from "@/lib/format";
 import { EXIT_TYPE_LABEL } from "@/lib/labels";
 import { listExits } from "@/lib/services/exits";
 
-// 투자·회수 > 회수: 회수 기록 + 회수 내역 (BR-EXIT-01~06)
+// 투자·회수 > 회수: 회수 기록 + 회수 내역 (BR-EXIT-01~06). 틀린 회수는 취소하고 다시 기록한다 (BR-EXIT-08)
 
 export default async function ExitsPage(props: PageProps<"/funds/[fundId]/exits">) {
   const { fundId } = await props.params;
@@ -36,12 +37,12 @@ export default async function ExitsPage(props: PageProps<"/funds/[fundId]/exits"
       )}
 
       <section className="rounded-2xl border border-slate-200 bg-white">
-        <h2 className="border-b border-slate-200 px-6 py-4 text-base font-semibold text-slate-900">회수 내역 {data.exits.length}건</h2>
+        <h2 className="border-b border-slate-200 px-6 py-4 text-base font-semibold text-slate-900">회수 내역 {t.count}건</h2>
         {data.exits.length === 0 ? (
           <p className="px-6 py-10 text-center text-sm text-slate-500">아직 회수한 기업이 없습니다.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm">
+            <table className="w-full min-w-[820px] text-sm">
               <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
                 <tr>
                   <th className="px-6 py-2.5">회수일</th>
@@ -50,27 +51,40 @@ export default async function ExitsPage(props: PageProps<"/funds/[fundId]/exits"
                   <th className="px-3 py-2.5 text-right">처분대가</th>
                   <th className="px-3 py-2.5 text-right">처분 원가</th>
                   <th className="px-3 py-2.5 text-right">처분손익</th>
-                  <th className="px-6 py-2.5 text-right">배수</th>
+                  <th className="px-3 py-2.5 text-right">배수</th>
+                  <th className="px-6 py-2.5" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {data.exits.map((x) => (
-                  <tr key={x.id}>
-                    <td className="px-6 py-2.5 text-slate-600">{formatDate(x.exit_date)}</td>
-                    <td className="px-3 py-2.5">
-                      <span className="font-medium text-slate-900">{x.company_name}</span>
-                      {x.memo && <span className="block text-xs text-slate-500">{x.memo}</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-slate-600">{EXIT_TYPE_LABEL[x.exit_type]}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">{formatKRWFull(x.proceeds_amount)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums text-slate-600">{formatKRWFull(x.cost_basis_amount)}</td>
-                    <td className={`px-3 py-2.5 text-right tabular-nums ${x.gain_amount >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                      {x.gain_amount >= 0 ? "+" : "−"}
-                      {formatKRWFull(Math.abs(x.gain_amount))}
-                    </td>
-                    <td className="px-6 py-2.5 text-right tabular-nums">{x.multiple === null ? "-" : `${x.multiple.toFixed(2)}x`}</td>
-                  </tr>
-                ))}
+                {data.exits.map((x) => {
+                  // 취소된 회수는 흐리게 + 금액에 취소선 (합계에서 빠진다)
+                  const off = x.cancelled_at ? "line-through text-slate-400" : "";
+                  return (
+                    <tr key={x.id}>
+                      <td className={`px-6 py-2.5 ${off || "text-slate-600"}`}>{formatDate(x.exit_date)}</td>
+                      <td className="px-3 py-2.5">
+                        <span className={`font-medium ${off || "text-slate-900"}`}>{x.company_name}</span>
+                        {x.memo && <span className="block text-xs text-slate-500">{x.memo}</span>}
+                        {x.cancelled_at && (
+                          <span className="block text-xs text-rose-600">
+                            {formatDate(x.cancelled_at)} 취소 · {x.cancel_reason}
+                          </span>
+                        )}
+                      </td>
+                      <td className={`px-3 py-2.5 ${off || "text-slate-600"}`}>{EXIT_TYPE_LABEL[x.exit_type]}</td>
+                      <td className={`px-3 py-2.5 text-right tabular-nums ${off}`}>{formatKRWFull(x.proceeds_amount)}</td>
+                      <td className={`px-3 py-2.5 text-right tabular-nums ${off || "text-slate-600"}`}>{formatKRWFull(x.cost_basis_amount)}</td>
+                      <td className={`px-3 py-2.5 text-right tabular-nums ${off || (x.gain_amount >= 0 ? "text-emerald-700" : "text-rose-700")}`}>
+                        {x.gain_amount >= 0 ? "+" : "−"}
+                        {formatKRWFull(Math.abs(x.gain_amount))}
+                      </td>
+                      <td className={`px-3 py-2.5 text-right tabular-nums ${off}`}>{x.multiple === null ? "-" : `${x.multiple.toFixed(2)}x`}</td>
+                      <td className="px-6 py-2.5 text-right">
+                        {!x.cancelled_at && data.can_record && <ExitCancelButton fundId={fundId} exitId={x.id} label={x.company_name} amount={x.proceeds_amount} />}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -13,7 +13,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
 
   return (
     <div className="flex flex-1 flex-col bg-slate-50 md:flex-row">
-      <AppSidebar userName={user.name} initialFolded={folded} />
+      <AppSidebar userName={user.name} userRole={user.role} initialFolded={folded} />
       <main className="min-w-0 flex-1">
         <div className="mx-auto w-full max-w-6xl px-4 py-8 md:px-8">{children}</div>
       </main>

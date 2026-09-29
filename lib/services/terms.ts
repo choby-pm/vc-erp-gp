@@ -22,6 +22,7 @@ export const TERM_RATIO_KEYS = [
 ] as const;
 
 export type TermsVersion = {
+  id: string;
   version: number;
   primary_purpose: string;
   unit_amount: number;
@@ -38,7 +39,7 @@ export type TermsVersion = {
 };
 
 const selectVersions = (fundId: string) => sql<TermsVersion[]>`
-  select t.version, t.primary_purpose, t.unit_amount,
+  select t.id, t.version, t.primary_purpose, t.unit_amount,
          t.primary_purpose_min_ratio::float8 as primary_purpose_min_ratio, t.gp_commitment_min_ratio::float8 as gp_commitment_min_ratio,
          t.management_fee_rate::float8 as management_fee_rate, t.management_fee_rate_after::float8 as management_fee_rate_after,
          t.carry_rate::float8 as carry_rate, t.hurdle_rate::float8 as hurdle_rate, t.quorum_ratio::float8 as quorum_ratio,

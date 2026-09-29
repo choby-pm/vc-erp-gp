@@ -92,7 +92,7 @@ export default async function StaffDetailPage(props: PageProps<"/staff/[staffId]
           </section>
         </div>
 
-        <StaffAccountPanel staff={staff} isSelf={staff.account?.user_id === me?.id} />
+        <StaffAccountPanel staff={staff} isSelf={staff.account?.user_id === me?.id} canManage={me?.role === "admin"} />
       </div>
     </div>
   );

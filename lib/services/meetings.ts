@@ -68,6 +68,7 @@ export type AgendaTally = {
   against_ratio: number;
   abstain_ratio: number;
   votes: Record<string, VoteChoice>; // member_id → 선택
+  lp_direct: string[]; // LP 시스템에서 직접 투표한 member_id (GP가 바꿀 수 없음, BR-VOTE-07)
   unlocks: string | null; // 가결됐을 때 가능해진 작업
 };
 
@@ -82,6 +83,8 @@ export type MeetingDetail = MeetingListItem & {
 };
 
 // ─── 조회 ──────────────────────────────────────────────────────────────────
+
+export type VoteChannel = "gp" | "lp_system";
 
 const today = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
 
@@ -131,8 +134,8 @@ export async function getMeeting(fundId: string, meetingId: string): Promise<Mee
     select id, agenda_no, agenda_type, title, description, quorum_ratio::float8 as quorum_ratio, result
     from agendas where meeting_id = ${meetingId} order by agenda_no
   `;
-  const votes = await sql<{ agenda_id: string; member_id: string; choice: VoteChoice; voting_power_ratio: number }[]>`
-    select v.agenda_id, v.member_id, v.choice, v.voting_power_ratio::float8 as voting_power_ratio
+  const votes = await sql<{ agenda_id: string; member_id: string; choice: VoteChoice; voting_power_ratio: number; channel: VoteChannel }[]>`
+    select v.agenda_id, v.member_id, v.choice, v.voting_power_ratio::float8 as voting_power_ratio, v.channel
     from votes v join agendas a on a.id = v.agenda_id
     where a.meeting_id = ${meetingId}
   `;
@@ -149,6 +152,7 @@ export async function getMeeting(fundId: string, meetingId: string): Promise<Mee
       against_ratio: ratio("against"),
       abstain_ratio: ratio("abstain"),
       votes: Object.fromEntries(mine.map((v) => [v.member_id, v.choice])),
+      lp_direct: mine.filter((v) => v.channel === "lp_system").map((v) => v.member_id),
       unlocks: a.result === "passed" ? (UNLOCKS[a.agenda_type] ?? null) : null,
     };
   });
@@ -325,7 +329,8 @@ export async function conveneMeeting(fundId: string, meetingId: string, userId: 
 
 // ─── 투표 ──────────────────────────────────────────────────────────────────
 
-// GP가 조합원별 찬반을 입력한다 (LP 직접 투표는 고도화). 의결권은 기록 시점 지분율로 고정 (BR-VOTE-01, 02)
+// GP가 조합원별 찬반을 입력한다 (서면 결의서 등). 의결권은 기록 시점 지분율로 고정 (BR-VOTE-01, 02).
+// LP가 LP 시스템에서 직접 한 투표는 GP가 바꿀 수 없다 (BR-VOTE-07)
 export async function recordVote(fundId: string, meetingId: string, agendaId: string, memberId: string, choice: VoteChoice, userId: string) {
   assertUuid(agendaId, "안건을");
   assertUuid(memberId, "조합원을");
@@ -336,13 +341,41 @@ export async function recordVote(fundId: string, meetingId: string, agendaId: st
     if (!agenda) throw notFound("안건을");
     const voter = (await currentVoters(t, fundId)).find((v) => v.member_id === memberId);
     if (!voter) throw new AppError(422, "NOT_A_MEMBER", "의결권이 있는 조합원이 아닙니다", "BR-VOTE-01");
+    const [direct] = await tx`select 1 from votes where agenda_id = ${agendaId} and member_id = ${memberId} and channel = 'lp_system'`;
+    if (direct) throw new AppError(409, "LP_VOTED_DIRECTLY", `${voter.name}이(가) LP 시스템에서 직접 투표했습니다. LP가 직접 한 투표는 GP가 바꿀 수 없습니다`, "BR-VOTE-07");
 
     await tx`
       insert into votes (agenda_id, member_id, choice, voting_power_ratio, created_by)
       values (${agendaId}, ${memberId}, ${choice}, ${voter.voting_power}, ${userId})
       on conflict (agenda_id, member_id) do update
-        set choice = excluded.choice, voting_power_ratio = excluded.voting_power_ratio
+        set choice = excluded.choice, voting_power_ratio = excluded.voting_power_ratio, created_by = excluded.created_by
     `;
+  });
+}
+
+// BR-VOTE-07 LP 직접 투표: LP 시스템이 본인 조합원 행의 찬반을 안건별로 한 번에 제출한다 (전부 기록되거나 전부 실패).
+// 소집 후 개최 처리 전까지 다시 제출할 수 있고, GP가 먼저 입력한 값도 LP 본인 제출이 덮어쓴다
+export async function recordLpVotes(lpId: string, fundId: string, meetingId: string, input: { agenda_id: string; choice: VoteChoice }[]) {
+  assertUuid(fundId, "조합을");
+  await sql.begin(async (tx) => {
+    const t = tx as unknown as typeof sql;
+    await lockMeeting(t, fundId, meetingId, "votable");
+    const voters = (await currentVoters(t, fundId)).filter((v) => v.lp_id === lpId);
+    if (voters.length === 0) throw new AppError(403, "NOT_A_MEMBER", "의결권이 있는 조합원이 아닙니다", "BR-VOTE-01");
+    const agendaIds = new Set((await tx<{ id: string }[]>`select id from agendas where meeting_id = ${meetingId}`).map((a) => a.id));
+    for (const v of input) {
+      if (!agendaIds.has(v.agenda_id)) throw new AppError(422, "VALIDATION_ERROR", "이 총회의 안건이 아닙니다", "BR-VOTE-07", { fields: { agenda_id: v.agenda_id } });
+    }
+    for (const v of input) {
+      for (const voter of voters) {
+        await tx`
+          insert into votes (agenda_id, member_id, choice, voting_power_ratio, channel, created_by)
+          values (${v.agenda_id}, ${voter.member_id}, ${v.choice}, ${voter.voting_power}, 'lp_system', null)
+          on conflict (agenda_id, member_id) do update
+            set choice = excluded.choice, voting_power_ratio = excluded.voting_power_ratio, channel = 'lp_system', created_by = null
+        `;
+      }
+    }
   });
 }
 

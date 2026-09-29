@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { sql } from "@/lib/db";
+import type { Role } from "./permissions";
 import { SESSION_COOKIE } from "./session-cookie";
 
 // DB 세션 방식 (D27)
@@ -9,7 +10,7 @@ import { SESSION_COOKIE } from "./session-cookie";
 
 const SESSION_DAYS = 7;
 
-export type CurrentUser = { id: string; email: string; name: string };
+export type CurrentUser = { id: string; email: string; name: string; role: Role };
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -39,7 +40,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   if (!token) return null;
 
   const [user] = await sql<CurrentUser[]>`
-    select u.id, u.email, u.name
+    select u.id, u.email, u.name, u.role
     from sessions s
     join users u on u.id = s.user_id
     where s.token_hash = ${hashToken(token)}

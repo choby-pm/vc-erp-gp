@@ -1,7 +1,9 @@
 import Link from "next/link";
+import AttachmentPanel from "@/components/attachment-panel";
 import ReportActions from "@/components/report-actions";
 import { formatDate, formatKRW, formatKRWFull, formatPercent } from "@/lib/format";
 import { loadOrNotFound } from "@/lib/page-helpers";
+import { listAttachments, storageConfigured } from "@/lib/services/attachments";
 import { getReport, periodLabel } from "@/lib/services/reports";
 
 const STATUS_LABEL = { holding: "보유 중", partially_exited: "일부 회수", exited: "전액 회수" } as const;
@@ -12,6 +14,7 @@ export default async function ReportDetailPage(props: PageProps<"/funds/[fundId]
   const s = r.snapshot.totals;
   const f = r.snapshot.period_flows;
   const published = r.status === "published";
+  const files = await listAttachments(fundId, "report", reportId);
 
   const cards: [string, string, string?][] = [
     ["약정 총액", formatKRW(s.commitment_amount), formatKRWFull(s.commitment_amount)],
@@ -127,6 +130,14 @@ export default async function ReportDetailPage(props: PageProps<"/funds/[fundId]
       ) : (
         <ReportActions fundId={fundId} reportId={r.id} comment={r.gp_comment} canPublish={r.can_publish} blockedReason={r.publish_blocked_reason} />
       )}
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-6">
+        <h3 className="text-base font-semibold text-slate-900">보고서 파일</h3>
+        <p className="mt-0.5 mb-3 text-xs text-slate-500">
+          보고서 PDF(감사보고서·운용보고서 등). {published ? "발행된 보고서라 LP 시스템에서도 내려받을 수 있습니다." : "발행하면 LP 시스템에서도 내려받을 수 있습니다."}
+        </p>
+        <AttachmentPanel fundId={fundId} targetType="report" targetId={r.id} attachments={files} storageConfigured={storageConfigured()} />
+      </section>
     </div>
   );
 }

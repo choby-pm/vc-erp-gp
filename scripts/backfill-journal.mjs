@@ -42,7 +42,7 @@ try {
       for (const i of await tx`select i.id, i.investment_amount, i.investment_date::text as d, i.is_follow_on, i.created_by, i.created_at, c.name from investments i join companies c on c.id = i.company_id where i.fund_id = ${fund.id}`) {
         events.push({ d: i.d, at: i.created_at, type: 'investment', id: i.id, run: () => acc.journalForInvestment(tx, { fund_id: fund.id, investment_id: i.id, amount: Number(i.investment_amount), date: i.d, company_name: i.name, follow_on: i.is_follow_on, created_by: i.created_by }) });
       }
-      for (const x of await tx`select x.id, x.proceeds_amount, x.cost_basis_amount, x.exit_date::text as d, x.created_by, x.created_at, c.name from exits x join companies c on c.id = x.company_id where x.fund_id = ${fund.id}`) {
+      for (const x of await tx`select x.id, x.proceeds_amount, x.cost_basis_amount, x.exit_date::text as d, x.created_by, x.created_at, c.name from exits x join companies c on c.id = x.company_id where x.fund_id = ${fund.id} and x.cancelled_at is null`) {
         events.push({ d: x.d, at: x.created_at, type: 'exit', id: x.id, run: () => acc.journalForExit(tx, { fund_id: fund.id, exit_id: x.id, proceeds: Number(x.proceeds_amount), cost: Number(x.cost_basis_amount), date: x.d, company_name: x.name, created_by: x.created_by }) });
       }
       for (const m of await tx`select id, fee_amount, charged_date::text as d, period_start::text as ps, period_end::text as pe, created_by, created_at from management_fee_charges where fund_id = ${fund.id} and fee_amount > 0`) {

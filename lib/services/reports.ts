@@ -108,7 +108,7 @@ export async function computeSnapshot(tx: typeof sql, fundId: string, start: str
     ), ex as (
       select company_id, sum(proceeds_amount)::bigint as proceeds, sum(cost_basis_amount)::bigint as exited_cost,
              coalesce(sum(proceeds_amount) filter (where exit_date >= ${start}), 0)::bigint as period_proceeds
-      from exits where fund_id = ${fundId} and exit_date <= ${asOf} group by company_id
+      from exits where fund_id = ${fundId} and exit_date <= ${asOf} and cancelled_at is null group by company_id
     ), val as (
       select distinct on (company_id) company_id, fair_value_amount
       from valuations where fund_id = ${fundId} and valuation_date <= ${asOf}

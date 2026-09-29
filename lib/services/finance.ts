@@ -2,7 +2,7 @@ import { sql } from "@/lib/db";
 import { AppError, assertUuid, notFound, statusNotAllowed } from "@/lib/api/errors";
 import { formatDate, formatKRWFull } from "@/lib/format";
 import type { CashFlowKind, ExpenseType, FundStatus } from "@/lib/labels";
-import { journalForExpense, reverseSourceJournal } from "@/lib/services/accounting";
+import { correctionDate, journalForExpense, reverseSourceJournal } from "@/lib/services/accounting";
 
 // 조합 재무 (D34)
 // · 요약: 약정·납입·투자·비용·회수·분배·현금·투자 가능 잔액 (v_fund_summary)
@@ -86,7 +86,7 @@ export async function listCashFlows(fundId: string, filter: { from?: string | nu
       union all
       select x.exit_date, 'exit', '투자 회수', c.name, x.proceeds_amount::bigint,
              '/funds/' || x.fund_id || '/portfolio', x.created_at::text
-      from exits x join companies c on c.id = x.company_id where x.fund_id = ${fundId} and x.proceeds_amount > 0
+      from exits x join companies c on c.id = x.company_id where x.fund_id = ${fundId} and x.proceeds_amount > 0 and x.cancelled_at is null
       union all
       select m.charged_date, 'management_fee', '관리보수 (' || to_char(m.period_start, 'YYYY.MM.DD') || ' ~ ' || to_char(m.period_end, 'YYYY.MM.DD') || ')',
              '운용사 (GP)', -m.fee_amount::bigint, '/funds/' || m.fund_id || '/management-fees', m.created_at::text
@@ -184,7 +184,7 @@ export async function availableCashOn(tx: typeof sql, fundId: string, date: stri
       select entry_date as d, amount::bigint as amt from ledger_entries where fund_id = ${fundId} and entry_type = 'contribution'
       union all select entry_date, -amount::bigint from ledger_entries where fund_id = ${fundId} and entry_type = 'distribution'
       union all select investment_date, -investment_amount::bigint from investments where fund_id = ${fundId}
-      union all select exit_date, proceeds_amount::bigint from exits where fund_id = ${fundId}
+      union all select exit_date, proceeds_amount::bigint from exits where fund_id = ${fundId} and cancelled_at is null
       union all select charged_date, -fee_amount::bigint from management_fee_charges where fund_id = ${fundId}
       union all select paid_date, -amount::bigint from fund_expenses where fund_id = ${fundId} and cancelled_at is null
     ), daily as (
@@ -260,7 +260,7 @@ export async function cancelExpense(fundId: string, expenseId: string, reason: s
     if (expense.cancelled_at) throw new AppError(409, "ALREADY_REVERSED", `이미 취소된 비용입니다 (${formatDate(expense.cancelled_at)})`, "BR-EXP-02");
     await tx`update fund_expenses set cancelled_at = now(), cancelled_by = ${userId}, cancel_reason = ${reason} where id = ${expenseId}`;
     // 회계 (D35): 원래 분개를 역분개한다. 현금출납장처럼 지급일에서 빠지도록 지급일로 적고, 그 기간이 결산됐으면 오늘로 적는다
-    const [closed] = await tx`select 1 from fiscal_closings where fund_id = ${fundId} and period_end >= ${expense.paid_date}`;
-    await reverseSourceJournal(tx as unknown as typeof sql, "expense", expenseId, closed ? today() : expense.paid_date, `비용 취소: ${reason}`, userId);
+    const t = tx as unknown as typeof sql;
+    await reverseSourceJournal(t, "expense", expenseId, await correctionDate(t, fundId, expense.paid_date), `비용 취소: ${reason}`, userId);
   });
 }

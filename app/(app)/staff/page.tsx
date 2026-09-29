@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { ROLE_LABEL } from "@/lib/auth/permissions";
+import { getCurrentUser } from "@/lib/auth/session";
 import { formatDate } from "@/lib/format";
 import { listStaff } from "@/lib/services/staff";
 
@@ -13,7 +15,7 @@ const TABS = [
 export default async function StaffPage(props: PageProps<"/staff">) {
   const { status: raw } = await props.searchParams;
   const status = raw === "left" || raw === "all" ? raw : "active";
-  const staff = await listStaff(status);
+  const [staff, me] = await Promise.all([listStaff(status), getCurrentUser()]);
 
   return (
     <div className="space-y-6">
@@ -22,9 +24,11 @@ export default async function StaffPage(props: PageProps<"/staff">) {
           <h1 className="text-2xl font-bold text-slate-900">구성원</h1>
           <p className="mt-1 text-sm text-slate-500">운용사 소속 인원. 조합 운용 인력은 구성원 중에서 지정합니다.</p>
         </div>
-        <Link href="/staff/new" className="shrink-0 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
-          + 구성원 등록
-        </Link>
+        {me?.role === "admin" && (
+          <Link href="/staff/new" className="shrink-0 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+            + 구성원 등록
+          </Link>
+        )}
       </div>
 
       <div className="flex gap-2">
@@ -54,7 +58,7 @@ export default async function StaffPage(props: PageProps<"/staff">) {
                 <th className="px-4 py-3">이름</th>
                 <th className="px-4 py-3">직위 · 부서</th>
                 <th className="px-4 py-3">입사일</th>
-                <th className="px-4 py-3">로그인 계정</th>
+                <th className="px-4 py-3">로그인 계정 · 권한</th>
                 <th className="px-4 py-3 text-right">담당 조합</th>
               </tr>
             </thead>
@@ -81,6 +85,7 @@ export default async function StaffPage(props: PageProps<"/staff">) {
                     ) : (
                       <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">사용 중</span>
                     )}
+                    {s.account_role && <span className="ml-2 text-xs text-slate-600">{ROLE_LABEL[s.account_role]}</span>}
                   </td>
                   <td className="px-4 py-3 text-right text-slate-600">{s.active_fund_count > 0 ? `${s.active_fund_count}개` : "-"}</td>
                 </tr>

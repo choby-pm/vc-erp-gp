@@ -88,7 +88,7 @@ async function liquidationConditions(tx: typeof sql, fundId: string) {
     from v_portfolio where fund_id = ${fundId}
   `;
   const [final] = await tx<{ status: string; distribution_date: string }[]>`
-    select status, distribution_date from distributions where fund_id = ${fundId} and is_final
+    select status, distribution_date from distributions where fund_id = ${fundId} and is_final and status <> 'cancelled'
   `;
   const [{ cash_amount }] = await tx<{ cash_amount: number }[]>`select cash_amount from v_fund_summary where fund_id = ${fundId}`;
   const [{ open_calls }] = await tx<{ open_calls: number }[]>`

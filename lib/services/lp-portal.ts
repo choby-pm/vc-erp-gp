@@ -1,6 +1,8 @@
 import { sql } from "@/lib/db";
 import { AppError, assertUuid, notFound } from "@/lib/api/errors";
-import type { DistributionComponent, FundStatus, FundType, InstitutionType, LpType, ManagerRole, NoticeType } from "@/lib/labels";
+import type { DistributionComponent, FundStatus, FundType, InstitutionType, LpType, ManagerRole, NoticeType, VoteChoice } from "@/lib/labels";
+import { openAttachment, publicAttachments } from "@/lib/services/attachments";
+import { recordLpVotes } from "@/lib/services/meetings";
 import { termsEffectiveAt } from "@/lib/services/terms";
 
 // LP 연동 API가 돌려주는 데이터 (05 API 설계 5장, 03 DB 설계 7장 LP 공개 등급)
@@ -8,6 +10,7 @@ import { termsEffectiveAt } from "@/lib/services/terms";
 // · 🔵 조합 단위: 이 LP가 조합원인 조합만 (아니면 403 FORBIDDEN)
 // · 🟡 요약만: 투자·평가·회수·기업은 발행된 정기 보고 스냅샷으로만
 // · 🔴 비공개: 딜·투심위·다른 LP 정보·메모·created_by·내부 문서 ID는 어떤 응답에도 넣지 않는다
+//   (LP가 직접 행동하는 대상의 ID는 예외: 통지 확인용 notice id, 직접 투표용 총회·안건 id)
 // GP 화면의 "LP 공개 데이터 미리보기"도 이 함수들을 그대로 쓴다 (LP 시스템이 보는 것과 같게)
 
 const forbidden = () => new AppError(403, "FORBIDDEN", "이 출자자가 조합원인 조합이 아닙니다");
@@ -85,6 +88,7 @@ export async function lpFund(lpId: string, fundId: string) {
       carry_rate: t.carry_rate,
       hurdle_rate: t.hurdle_rate,
       quorum_ratio: t.quorum_ratio,
+      attachments: (await publicAttachments("fund_terms", [t.id])).get(t.id) ?? [], // 규약 원문 PDF (BR-FILE-02)
     },
     institutions,
     managers,
@@ -148,11 +152,13 @@ export async function lpDistributions(lpId: string, fundId: string) {
 export async function lpMeetings(lpId: string, fundId: string) {
   const members = await memberIds(lpId, fundId);
   return sql`
-    select g.meeting_type, g.meeting_date, g.location, g.status,
+    select g.id, g.meeting_type, g.meeting_date, g.location, g.status,
+           (g.status = 'scheduled') as voting_open, -- 소집된 총회는 개최 처리 전까지 직접 투표할 수 있다 (BR-VOTE-07)
            coalesce(json_agg(json_build_object(
-             'agenda_no', a.agenda_no, 'agenda_type', a.agenda_type, 'title', a.title, 'description', a.description,
+             'id', a.id, 'agenda_no', a.agenda_no, 'agenda_type', a.agenda_type, 'title', a.title, 'description', a.description,
              'quorum_ratio', a.quorum_ratio::float8, 'result', a.result,
-             'my_vote', (select v.choice from votes v where v.agenda_id = a.id and v.member_id = any(${members}::uuid[]) limit 1)
+             'my_vote', (select v.choice from votes v where v.agenda_id = a.id and v.member_id = any(${members}::uuid[]) limit 1),
+             'my_vote_channel', (select v.channel from votes v where v.agenda_id = a.id and v.member_id = any(${members}::uuid[]) limit 1)
            ) order by a.agenda_no) filter (where a.id is not null), '[]') as agendas
     from general_meetings g
     left join agendas a on a.meeting_id = g.id
@@ -162,15 +168,33 @@ export async function lpMeetings(lpId: string, fundId: string) {
   `;
 }
 
+// 🔵🟢 LP 직접 투표 (BR-VOTE-07). 제출 후 그 총회의 내 투표 현황을 돌려준다
+export async function lpVote(lpId: string, fundId: string, meetingId: string, votes: { agenda_id: string; choice: VoteChoice }[]) {
+  await memberIds(lpId, fundId);
+  assertUuid(meetingId, "총회를");
+  await recordLpVotes(lpId, fundId, meetingId, votes);
+  const meetings = (await lpMeetings(lpId, fundId)) as unknown as { id: string }[];
+  return meetings.find((m) => m.id === meetingId);
+}
+
 // 🔵🟡 발행된 정기 보고 (스냅샷). 투자·평가·회수 정보는 이 스냅샷으로만 공개한다
 export async function lpReports(lpId: string, fundId: string) {
   await memberIds(lpId, fundId);
-  return sql`
-    select r.period_type, r.period_start, r.period_end, r.gp_comment, r.snapshot,
+  const reports = await sql<{ id: string; [k: string]: unknown }[]>`
+    select r.id, r.period_type, r.period_start, r.period_end, r.gp_comment, r.snapshot,
            (select min(n.sent_at) from notices n where n.source_type = 'report' and n.source_id = r.id) as published_at
     from reports r where r.fund_id = ${fundId} and r.status = 'published'
     order by r.period_end desc, published_at desc
   `;
+  // 보고서 PDF (BR-FILE-02). 보고서 id 는 내부 문서 ID라 응답에서 뺀다
+  const files = await publicAttachments("report", reports.map((r) => r.id));
+  return reports.map(({ id, ...r }) => ({ ...r, attachments: files.get(id) ?? [] }));
+}
+
+// 🔵 첨부 파일 내려받기: 이 LP가 조합원인 조합의 규약 원문, 발행된 보고서 PDF만 (BR-FILE-02)
+export async function lpAttachment(lpId: string, fundId: string, attachmentId: string) {
+  await memberIds(lpId, fundId);
+  return openAttachment(fundId, attachmentId, { lpOnly: true });
 }
 
 // 🟢 받은 통지 전체 (조합원이 되기 전 출자 제안 포함)

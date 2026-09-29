@@ -3,24 +3,25 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import TempPasswordNotice from "@/components/temp-password-notice";
+import { ROLE_DESCRIPTION, ROLE_LABEL, ROLES, type Role } from "@/lib/auth/permissions";
 import { formatDate } from "@/lib/format";
 import type { StaffDetail } from "@/lib/services/staff";
 
-// 구성원 상세의 로그인 계정 · 퇴사 처리 영역
+// 구성원 상세의 로그인 계정 · 권한 · 퇴사 처리 영역. 바꾸는 작업은 관리자만 (D42)
 
-export default function StaffAccountPanel({ staff, isSelf }: { staff: StaffDetail; isSelf: boolean }) {
+export default function StaffAccountPanel({ staff, isSelf, canManage }: { staff: StaffDetail; isSelf: boolean; canManage: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [temp, setTemp] = useState<{ loginEmail: string; tempPassword: string } | null>(null);
   const [leftDate, setLeftDate] = useState(() => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }));
 
-  async function post(path: string, body?: unknown, confirmMessage?: string) {
+  async function post(path: string, body?: unknown, confirmMessage?: string, method: "POST" | "PUT" = "POST") {
     if (confirmMessage && !window.confirm(confirmMessage)) return;
     setBusy(true);
     setError(null);
     const res = await fetch(`/api/v1/staff/${staff.id}${path}`, {
-      method: "POST",
+      method,
       headers: { "Content-Type": "application/json" },
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -63,8 +64,35 @@ export default function StaffAccountPanel({ staff, isSelf }: { staff: StaffDetai
                   )}
                 </dd>
               </div>
+              <div className="flex items-start justify-between gap-4">
+                <dt className="text-slate-500">권한</dt>
+                <dd className="text-right">
+                  {canManage && !isSelf && !left ? (
+                    <select
+                      value={account.role}
+                      disabled={busy}
+                      onChange={(e) => {
+                        const role = e.target.value as Role;
+                        void post("/account/role", { role }, `${staff.name}님의 권한을 '${ROLE_LABEL[role]}'(으)로 바꿀까요?
+${ROLE_DESCRIPTION[role]}`, "PUT");
+                      }}
+                      className="rounded-lg border border-slate-300 px-2 py-1 text-sm"
+                    >
+                      {ROLES.map((r) => (
+                        <option key={r} value={r}>
+                          {ROLE_LABEL[r]}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="font-semibold text-slate-900">{ROLE_LABEL[account.role]}</span>
+                  )}
+                  <span className="mt-0.5 block text-xs text-slate-500">{ROLE_DESCRIPTION[account.role]}</span>
+                  {canManage && isSelf && <span className="block text-xs text-slate-400">자기 자신의 권한은 바꿀 수 없습니다</span>}
+                </dd>
+              </div>
             </dl>
-            {!left && (
+            {canManage && !left && (
               <div className="mt-4 flex flex-wrap gap-2">
                 <button type="button" disabled={busy} onClick={() => post("/account/reset-password", undefined, "임시 비밀번호를 새로 발급할까요? 이 구성원의 기존 로그인은 모두 끊깁니다.")} className={`${btn} border-slate-300 text-slate-700 hover:bg-slate-50`}>
                   비밀번호 재발급
@@ -90,7 +118,7 @@ export default function StaffAccountPanel({ staff, isSelf }: { staff: StaffDetai
         ) : (
           <div className="mt-3 text-sm text-slate-500">
             <p>로그인 계정이 없습니다. {left ? "퇴사한 구성원은 계정을 만들 수 없습니다." : "업무 이메일이 로그인 ID가 됩니다."}</p>
-            {!left && (
+            {canManage && !left && (
               <button type="button" disabled={busy} onClick={() => post("/account")} className={`${btn} mt-3 border-indigo-300 text-indigo-700 hover:bg-indigo-50`}>
                 로그인 계정 만들기
               </button>
@@ -99,7 +127,7 @@ export default function StaffAccountPanel({ staff, isSelf }: { staff: StaffDetai
         )}
       </section>
 
-      {!left && (
+      {canManage && !left && (
         <section className="rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="text-base font-semibold text-slate-900">퇴사 처리</h2>
           <p className="mt-1 text-xs text-slate-500">

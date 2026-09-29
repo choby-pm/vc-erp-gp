@@ -170,11 +170,32 @@ export function ReverseJournalButton({ fundId, entryId, entryNo }: { fundId: str
   );
 }
 
+// 결산 재개 (BR-ACC-07): 결산 분개를 역분개하고 기간 잠금을 푼다. 고친 뒤 다시 결산한다
+export function ReopenClosingButton({ fundId, year }: { fundId: string; year: number }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  async function run() {
+    const reason = window.prompt(`${year} 사업연도 결산을 재개합니다.\n결산 분개가 역분개되고 그 기간에 다시 기록할 수 있게 됩니다. 정정을 마치면 다시 결산하세요.\n재개 사유를 입력하세요.`);
+    if (!reason?.trim()) return;
+    setBusy(true);
+    const res = await fetch(`/api/v1/funds/${fundId}/accounting/closings/${year}/reopen`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }) });
+    const json = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) window.alert(json.error?.message ?? "재개하지 못했습니다");
+    router.refresh();
+  }
+  return (
+    <button type="button" disabled={busy} onClick={run} className="text-xs text-slate-400 hover:text-rose-600 disabled:opacity-50">
+      결산 재개
+    </button>
+  );
+}
+
 export function ClosingPanel({ fundId, years }: { fundId: string; years: { year: number; start: string; end: string; closable: boolean; reason: string | null }[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState<number | null>(null);
   async function close(year: number) {
-    if (!window.confirm(`${year} 사업연도를 결산할까요?\n수익·비용이 이익잉여금으로 대체되고, 이 기간에는 더 이상 기록할 수 없습니다. 되돌릴 수 없습니다.`)) return;
+    if (!window.confirm(`${year} 사업연도를 결산할까요?\n수익·비용이 이익잉여금으로 대체되고, 이 기간에는 더 이상 기록할 수 없습니다. 정정이 필요하면 결산을 재개합니다.`)) return;
     setBusy(year);
     const res = await fetch(`/api/v1/funds/${fundId}/accounting/closings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fiscal_year: year }) });
     const json = await res.json().catch(() => ({}));

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ClosingPanel, ManualJournalForm, ReverseJournalButton } from "@/components/accounting-actions";
+import { ClosingPanel, ManualJournalForm, ReopenClosingButton, ReverseJournalButton } from "@/components/accounting-actions";
 import { formatDate } from "@/lib/format";
 import {
   CATEGORY_LABEL,
@@ -363,7 +363,9 @@ async function Closing({ fundId, formationDate }: { fundId: string; formationDat
   }
   const first = Number(formationDate.slice(0, 4));
   const current = Number(today().slice(0, 4));
-  const closedYears = new Set(closings.map((c) => c.fiscal_year));
+  const active = closings.filter((c) => !c.reopened_at);
+  const closedYears = new Set(active.map((c) => c.fiscal_year));
+  const lastClosed = active.at(-1)?.fiscal_year ?? null; // 재개는 마지막 결산부터 (BR-ACC-07)
   const years = [];
   for (let y = first; y <= current; y++) {
     if (closedYears.has(y)) continue;
@@ -378,7 +380,7 @@ async function Closing({ fundId, formationDate }: { fundId: string; formationDat
         <div className="border-b border-slate-200 px-6 py-4">
           <h2 className="text-base font-semibold text-slate-900">사업연도 결산</h2>
           <p className="mt-0.5 text-xs text-slate-500">
-            결산하면 그 사업연도의 수익·비용 계정 잔액을 이익잉여금으로 대체하는 결산 분개를 만들고, 기간을 잠급니다. 잠긴 기간에는 업무 기록·분개를 넣을 수 없습니다. 되돌릴 수 없습니다.
+            결산하면 그 사업연도의 수익·비용 계정 잔액을 이익잉여금으로 대체하는 결산 분개를 만들고, 기간을 잠급니다. 잠긴 기간에는 업무 기록·분개를 넣을 수 없습니다. 고칠 것이 생기면 마지막 결산부터 재개(결산 분개 역분개)한 뒤 다시 결산합니다.
           </p>
         </div>
         {years.length > 0 ? <ClosingPanel fundId={fundId} years={years} /> : <p className="px-6 py-6 text-sm text-slate-500">결산할 사업연도가 없습니다.</p>}
@@ -389,13 +391,21 @@ async function Closing({ fundId, formationDate }: { fundId: string; formationDat
           <table className="w-full text-sm">
             <tbody className="divide-y divide-slate-100">
               {closings.map((c) => (
-                <tr key={c.fiscal_year}>
-                  <td className="px-6 py-2.5 font-semibold">{c.fiscal_year} 사업연도</td>
+                <tr key={c.id} className={c.reopened_at ? "text-slate-400" : ""}>
+                  <td className="px-6 py-2.5 font-semibold">
+                    {c.fiscal_year} 사업연도
+                    {c.reopened_at && (
+                      <span className="block text-xs font-normal text-rose-600">
+                        {formatDate(c.reopened_at)} 재개 · {c.reopen_reason}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2.5 text-slate-500">
                     {formatDate(c.period_start)} ~ {formatDate(c.period_end)}
                   </td>
                   <td className="px-3 py-2.5 text-right tabular-nums">당기순{c.net_income >= 0 ? "이익" : "손실"} {won(c.net_income)}원</td>
-                  <td className="px-6 py-2.5 text-right text-slate-500">{formatDate(c.closed_at)} 결산</td>
+                  <td className="px-3 py-2.5 text-right text-slate-500">{formatDate(c.closed_at)} 결산</td>
+                  <td className="px-6 py-2.5 text-right">{!c.reopened_at && c.fiscal_year === lastClosed && <ReopenClosingButton fundId={fundId} year={c.fiscal_year} />}</td>
                 </tr>
               ))}
             </tbody>

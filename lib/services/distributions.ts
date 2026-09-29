@@ -3,7 +3,7 @@ import { AppError, assertUuid, notFound, statusNotAllowed } from "@/lib/api/erro
 import { formatDate, formatKRWFull, formatPercent } from "@/lib/format";
 import { DISTRIBUTION_COMPONENTS, DISTRIBUTION_COMPONENT_LABEL, type DistributionComponent, type DistributionStatus, type FundStatus } from "@/lib/labels";
 import type { DistributionInput } from "@/lib/schemas/distribution";
-import { journalForDistributionPayment } from "@/lib/services/accounting";
+import { journalForDistributionPayment, reverseSourceJournal } from "@/lib/services/accounting";
 import { recordEvent } from "@/lib/services/events";
 import { assertCashAvailable, availableCashOn } from "@/lib/services/finance";
 import { addLedgerEntry } from "@/lib/services/ledger";
@@ -15,6 +15,7 @@ import { termsEffectiveAt } from "@/lib/services/terms";
 // · 조합원별 배분: 원금 반환은 조합원별 납입액, 기준수익은 조합원별 기준수익, 초과수익은 약정 비율(지분율)대로.
 //   원 미만은 버리고 나머지는 약정액이 가장 큰 조합원에게 (BR-CALL-03, 04와 같은 규칙)
 // · 흐름: 초안(계산 결과 저장) → 확정(잠금 + LP 통지) → 지급(조합원 원장 + 분개)
+// · 정정 (BR-DIST-12, D39): 확정·지급한 분배는 취소한다 (마지막 분배부터). 지급했던 분배면 원장 취소 행 + 분개 역분개
 
 export type WaterfallTier = { component: DistributionComponent; cap_amount: number | null; previously_amount: number; this_amount: number };
 export type WaterfallMember = {
@@ -50,9 +51,12 @@ export type DistributionListItem = {
   carried_interest_amount: number;
   confirmed_at: Date | null;
   paid_at: Date | null;
+  cancelled_at: Date | null;
+  cancel_reason: string | null;
 };
 
 const DIST_STATUSES: FundStatus[] = ["operating", "dissolved"]; // BR-DIST-01
+const OPEN_STATUSES: DistributionStatus[] = ["draft", "confirmed"]; // BR-DIST-08 진행 중
 const SIMPLIFICATIONS = ["기준수익은 납입 건별 단리 (납입액 × 기준수익률 × 경과일 ÷ 365)", "GP 캐치업 없음", "클로백(성과보수 반환) 없음", "원천징수 등 세금은 반영하지 않음"];
 const today = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
 const daysBetween = (from: string, to: string) => Math.max(0, Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000));
@@ -208,7 +212,7 @@ export async function listDistributions(fundId: string) {
   `;
   if (!fund) throw notFound("조합을");
   const items = await sql<DistributionListItem[]>`
-    select d.id, d.distribution_no, d.distribution_date, d.distributable_amount, d.is_final, d.status, d.memo, d.confirmed_at, d.paid_at,
+    select d.id, d.distribution_no, d.distribution_date, d.distributable_amount, d.is_final, d.status, d.memo, d.confirmed_at, d.paid_at, d.cancelled_at, d.cancel_reason,
            coalesce((select sum(amount) from distribution_items i where i.distribution_id = d.id and i.component = 'carried_interest'), 0)::bigint as carried_interest_amount
     from distributions d where d.fund_id = ${fundId}
     order by d.distribution_no desc
@@ -217,9 +221,9 @@ export async function listDistributions(fundId: string) {
   return {
     fund_status: fund.status,
     cash_amount: fund.cash_amount,
-    can_create: DIST_STATUSES.includes(fund.status) && !items.some((d) => d.status !== "paid"),
-    open_distribution_id: items.find((d) => d.status !== "paid")?.id ?? null,
-    can_final: fund.status === "dissolved" && !items.some((d) => d.is_final),
+    can_create: DIST_STATUSES.includes(fund.status) && !items.some((d) => OPEN_STATUSES.includes(d.status)),
+    open_distribution_id: items.find((d) => OPEN_STATUSES.includes(d.status))?.id ?? null,
+    can_final: fund.status === "dissolved" && !items.some((d) => d.is_final && d.status !== "cancelled"),
     totals: {
       paid_amount: paid.reduce((s, d) => s + d.distributable_amount, 0),
       carried_interest_amount: paid.reduce((s, d) => s + d.carried_interest_amount, 0),
@@ -271,7 +275,7 @@ export async function getDistribution(fundId: string, distributionId: string): P
   assertUuid(fundId, "조합을");
   assertUuid(distributionId, "분배를");
   const [d] = await sql<(DistributionListItem & { fund_status: FundStatus })[]>`
-    select d.id, d.distribution_no, d.distribution_date, d.distributable_amount, d.is_final, d.status, d.memo, d.confirmed_at, d.paid_at, f.status as fund_status,
+    select d.id, d.distribution_no, d.distribution_date, d.distributable_amount, d.is_final, d.status, d.memo, d.confirmed_at, d.paid_at, d.cancelled_at, d.cancel_reason, f.status as fund_status,
            coalesce((select sum(amount) from distribution_items i where i.distribution_id = d.id and i.component = 'carried_interest'), 0)::bigint as carried_interest_amount
     from distributions d join funds f on f.id = d.fund_id
     where d.id = ${distributionId} and d.fund_id = ${fundId}
@@ -302,7 +306,7 @@ export async function createDistribution(fundId: string, input: DistributionInpu
     const [open] = await tx`select 1 from distributions where fund_id = ${fundId} and status in ('draft', 'confirmed')`;
     if (open) throw fail(409, "DISTRIBUTION_IN_PROGRESS", "진행 중인 분배가 있습니다. 먼저 지급을 마치거나 초안을 삭제하세요", "BR-DIST-08");
     if (input.is_final) {
-      const [final] = await tx`select 1 from distributions where fund_id = ${fundId} and is_final`;
+      const [final] = await tx`select 1 from distributions where fund_id = ${fundId} and is_final and status <> 'cancelled'`;
       if (final) throw fail(409, "FINAL_DISTRIBUTION_EXISTS", "최종 분배는 한 번만 할 수 있습니다", "BR-DIST-03");
     }
     const w = await computeWaterfall(t, fundId, fund.status, input);
@@ -435,6 +439,96 @@ export async function payDistribution(fundId: string, distributionId: string, us
       created_by: userId,
     });
     await tx`update distributions set status = 'paid', paid_at = now() where id = ${d.id}`;
+  });
+}
+
+// BR-DIST-12 분배 취소: 확정·지급한 분배를 취소 상태로 남긴다 (초안은 삭제).
+// · 누적 워터폴은 앞 분배 결과를 기준으로 계산하므로 마지막 분배부터 거꾸로 취소한다
+// · 지급했던 분배면 조합원 원장에 취소 행(음수)을 남기고 분배 분개를 역분개한다. 돈이 돌아오는 날이라 둘 다 오늘 날짜
+// · LP 조합원에게 취소 통지를 보낸다
+export async function cancelDistribution(fundId: string, distributionId: string, reason: string, userId: string) {
+  await sql.begin(async (tx) => {
+    const t = tx as unknown as typeof sql;
+    const fund = await lockFund(t, fundId);
+    if (!DIST_STATUSES.includes(fund.status)) throw statusNotAllowed("BR-DIST-12", "분배 취소는 운용·해산 중인 조합에서 합니다");
+    const d = await lockDistribution(t, fundId, distributionId);
+    if (d.status === "draft") throw fail(409, "INVALID_STATE", "초안은 취소하지 않고 삭제합니다", "BR-DIST-12");
+    if (d.status === "cancelled") throw fail(409, "ALREADY_REVERSED", "이미 취소한 분배입니다", "BR-DIST-12");
+    const [later] = await tx<{ distribution_no: number }[]>`
+      select distribution_no from distributions
+      where fund_id = ${fundId} and distribution_no > ${d.distribution_no} and status in ('confirmed', 'paid')
+      order by distribution_no desc limit 1
+    `;
+    if (later) throw fail(409, "LATER_DISTRIBUTION_EXISTS", `제${later.distribution_no}차 분배를 먼저 취소하세요. 마지막 분배부터 거꾸로 취소합니다`, "BR-DIST-12");
+
+    const label = d.is_final ? "최종 분배" : `제${d.distribution_no}차 분배`;
+    const wasPaid = d.status === "paid";
+    const date = today();
+    if (wasPaid) {
+      const entries = await tx<{ id: string; member_id: string; lp_id: string | null; amount: number; source_id: string }[]>`
+        select e.id, e.member_id, m.lp_id, e.amount, e.source_id
+        from ledger_entries e join fund_members m on m.id = e.member_id
+        where e.fund_id = ${fundId} and e.entry_type = 'distribution' and e.source_type = 'distribution_item' and e.reversal_of_id is null
+          and e.source_id in (select id from distribution_items where distribution_id = ${d.id})
+          and not exists (select 1 from ledger_entries r where r.reversal_of_id = e.id)
+      `;
+      for (const e of entries) {
+        await addLedgerEntry(
+          t,
+          {
+            fund_id: fundId,
+            member_id: e.member_id,
+            lp_id: e.lp_id,
+            entry_type: "distribution",
+            amount: -e.amount,
+            entry_date: date,
+            source_type: "distribution_item",
+            source_id: e.source_id,
+            reversal_of_id: e.id,
+            memo: `${label} 취소: ${reason}`,
+            created_by: userId,
+          },
+          { journal: false },
+        );
+      }
+      await reverseSourceJournal(t, "distribution", d.id, date, `${label} 취소: ${reason}`, userId);
+    }
+    await tx`update distributions set status = 'cancelled', cancelled_at = now(), cancelled_by = ${userId}, cancel_reason = ${reason} where id = ${d.id}`;
+
+    const title = `${fund.name} ${label} 취소 안내`;
+    for (const m of groupItems(await loadItems(t, d.id))) {
+      if (!m.lp_id || m.total_amount === 0) continue;
+      const body = [
+        `${m.member_name} 귀중`,
+        "",
+        `${fund.name}의 ${label}(분배일 ${formatDate(d.distribution_date)})를 취소합니다.`,
+        "",
+        `· 취소 사유: ${reason}`,
+        wasPaid
+          ? `· 지급한 분배금 ${formatKRWFull(m.total_amount)}의 반환 절차는 별도로 안내드립니다.`
+          : `· 지급 예정이던 분배금 ${formatKRWFull(m.total_amount)}은 지급하지 않습니다.`,
+      ].join("\n");
+      const [notice] = await tx<{ id: string; sent_at: Date }[]>`
+        insert into notices (fund_id, notice_type, title, body, source_type, source_id, status, sent_at, created_by)
+        values (${fundId}, 'distribution', ${title}, ${body}, 'distribution', ${d.id}, 'sent', now(), ${userId})
+        returning id, sent_at
+      `;
+      await tx`insert into notice_recipients (notice_id, lp_id) values (${notice.id}, ${m.lp_id})`;
+      await recordEvent(t, {
+        event_type: "notice.sent",
+        aggregate_type: "notice",
+        aggregate_id: notice.id,
+        lp_id: m.lp_id,
+        fund_id: fundId,
+        data: {
+          notice_id: notice.id,
+          notice_type: "distribution",
+          title,
+          sent_at: notice.sent_at,
+          distribution: { distribution_no: d.distribution_no, is_final: d.is_final, distribution_date: d.distribution_date, amount: m.total_amount, cancelled: true, was_paid: wasPaid },
+        },
+      });
+    }
   });
 }
 
