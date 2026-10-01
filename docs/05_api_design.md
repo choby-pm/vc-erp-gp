@@ -601,7 +601,7 @@ Authorization: Bearer {LP_SYSTEM_API_KEY}
 |---|---|---|---|
 | GET | `/lps/{lp_id}` | LP 기본 정보 | 🟢 |
 | GET | `/lps/{lp_id}/funds` | 참여 조합 목록 + 조합별 내 약정·납입·분배 요약 | 🔵🟢 |
-| GET | `/lps/{lp_id}/funds/{fund_id}` | 조합 정보 + 현재 규약(주목적 의무 비율 포함, D45) + 관계 기관 + 운용 인력 + 내 현황 | 🔵🟢 |
+| GET | `/lps/{lp_id}/funds/{fund_id}` | 조합 정보(목표 결성액·운용사 유형·결성액 = 조합 전체 약정 합계, D45) + 현재 규약(주목적 의무 비율 포함, D45) + 관계 기관 + 운용 인력 + 내 현황 | 🔵🟢 |
 | GET | `/lps/{lp_id}/funds/{fund_id}/ledger` | 내 원장 (취소 행 포함 전체 이력) | 🟢 |
 | GET | `/lps/{lp_id}/funds/{fund_id}/capital-calls` | 발송된 캐피탈콜 + 내 요청액·납입 상태 | 🔵🟢 |
 | GET | `/lps/{lp_id}/funds/{fund_id}/distributions` | 확정된 분배 + 내 분배액(단계별) | 🔵🟢 |

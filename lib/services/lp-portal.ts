@@ -61,8 +61,12 @@ export async function lpFunds(lpId: string) {
 
 export async function lpFund(lpId: string, fundId: string) {
   await memberIds(lpId, fundId);
-  const [fund] = await sql<{ id: string; name: string; fund_type: FundType; status: FundStatus; formation_date: string | null; dissolution_date: string | null; liquidation_date: string | null; term_years: number; investment_period_years: number }[]>`
-    select id, name, fund_type, status, formation_date, dissolution_date, liquidation_date, term_years, investment_period_years from funds where id = ${fundId}
+  // target_amount·gp_type·total_commitment_amount(결성액 = 조합 전체 약정 합계)는 LP ERP의 조합 정보·결성 확인용 (D45 보완)
+  const [fund] = await sql<{ id: string; name: string; fund_type: FundType; gp_type: string; status: FundStatus; target_amount: number; total_commitment_amount: number; formation_date: string | null; dissolution_date: string | null; liquidation_date: string | null; term_years: number; investment_period_years: number }[]>`
+    select f.id, f.name, f.fund_type, f.gp_type, f.status, f.target_amount,
+           (select coalesce(sum(e.amount), 0) from ledger_entries e where e.fund_id = f.id and e.entry_type = 'commitment')::bigint as total_commitment_amount,
+           f.formation_date, f.dissolution_date, f.liquidation_date, f.term_years, f.investment_period_years
+    from funds f where f.id = ${fundId}
   `;
   const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
   const t = await termsEffectiveAt(fundId, today);
