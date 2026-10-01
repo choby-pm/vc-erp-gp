@@ -601,13 +601,15 @@ Authorization: Bearer {LP_SYSTEM_API_KEY}
 |---|---|---|---|
 | GET | `/lps/{lp_id}` | LP 기본 정보 | 🟢 |
 | GET | `/lps/{lp_id}/funds` | 참여 조합 목록 + 조합별 내 약정·납입·분배 요약 | 🔵🟢 |
-| GET | `/lps/{lp_id}/funds/{fund_id}` | 조합 정보 + 현재 규약 + 관계 기관 + 내 현황 | 🔵🟢 |
+| GET | `/lps/{lp_id}/funds/{fund_id}` | 조합 정보 + 현재 규약(주목적 의무 비율 포함, D45) + 관계 기관 + 운용 인력 + 내 현황 | 🔵🟢 |
 | GET | `/lps/{lp_id}/funds/{fund_id}/ledger` | 내 원장 (취소 행 포함 전체 이력) | 🟢 |
 | GET | `/lps/{lp_id}/funds/{fund_id}/capital-calls` | 발송된 캐피탈콜 + 내 요청액·납입 상태 | 🔵🟢 |
 | GET | `/lps/{lp_id}/funds/{fund_id}/distributions` | 확정된 분배 + 내 분배액(단계별) | 🔵🟢 |
 | GET | `/lps/{lp_id}/funds/{fund_id}/meetings` | 소집된 총회(`id`, `voting_open`), 안건(`id`), 결과, 내 투표·투표 경로 | 🔵🟢 |
 | PUT | `/lps/{lp_id}/funds/{fund_id}/meetings/{meeting_id}/votes` | LP 직접 투표 `{ "votes": [{ "agenda_id", "choice" }] }` → 그 총회의 안건과 내 투표 (BR-VOTE-07) | 🔵🟢 |
-| GET | `/lps/{lp_id}/funds/{fund_id}/reports` | 발행된 정기 보고 (스냅샷) | 🔵🟡 |
+| GET | `/lps/{lp_id}/funds/{fund_id}/reports` | 발행된 정기 보고 (스냅샷) + `id`, `is_correction`(정정 보고), `my`(기준일 내 지분율·내 몫 평가액, D45) | 🔵🟡 |
+| GET | `/lps/{lp_id}/proposals` | 내 출자 제안(발송된 것만) + 제안 검토에 필요한 조합 정보(목표 결성액·기간·최신 규약 보수 조건·주목적·운용 인력). 조합원이 되기 전에도 조회 (D45) | 🟢 |
+| PUT | `/lps/{lp_id}/proposals/{proposal_id}/response` | LP 시스템의 제안 응답 `{ "decision": "reviewing" | "committed" | "declined", "loc_amount"?, "decided_date"? }`. 같은 요청을 다시 보내면 `changed: false`, 확약·거절 후 다른 결정·금액은 `409 PROPOSAL_CLOSED`. GP 화면에 "LP 직접" (D45) | 🟢 |
 | GET | `/lps/{lp_id}/notices` | 받은 통지 전체 (조합원이 되기 전 출자 제안 포함) | 🟢 |
 | POST | `/lps/{lp_id}/notices/{notice_id}/acknowledge` | 통지 확인 처리 | 🟢 |
 | GET | `/lps/{lp_id}/funds/{fund_id}/attachments/{attachment_id}` | 규약 원문·발행된 보고서 PDF 내려받기. 목록은 조합 정보의 `terms.attachments`, 보고서의 `attachments` (BR-FILE-02) | 🔵 |
@@ -615,7 +617,7 @@ Authorization: Bearer {LP_SYSTEM_API_KEY}
 
 > **LP 직접 투표** (D40): LP 시스템이 로그인한 LP의 찬반을 `PUT …/votes` 로 제출한다. 소집 후 개최 처리 전(`voting_open = true`)까지 다시 제출할 수 있다. LP가 직접 한 투표는 GP 화면에서 "LP 직접"으로 표시되고 GP가 바꿀 수 없다. 총회·안건 `id` 는 LP가 행동할 대상이라 공개한다 (통지 확인의 `notice_id` 와 같은 원칙).
 
-> **LP 기관용 ERP 연동 보완** (D45, 구현 예정): 출자 제안 목록·응답 API, 보고의 LP 몫 평가액, 규약의 주목적 의무 비율, 운용 인력 변경 이벤트. 상세는 LP 저장소 `docs/05_api_design.md` 5장.
+> **LP 기관용 ERP 연동 보완** (D45, 구현 완료): 출자 제안 목록·응답 API, 보고의 LP 몫 평가액, 규약의 주목적 의무 비율, 운용 인력 지정·교체·해임 때 `fund.updated`(`changed: "managers"`) 이벤트. 상세는 LP 저장소 `docs/05_api_design.md` 5장.
 
 ### 5-3. 응답 예시: 내 원장
 
@@ -674,6 +676,7 @@ X-GP-Signature: sha256=8f2a…
 
 ### 6-3. 전송 실패와 재시도
 
+- 이벤트를 만든 요청이 끝나면 **바로 보낸다** (D46). 실패한 것은 주기 작업(하루 1회)과 "지금 보내기" 버튼이 다시 보낸다
 - LP 시스템이 10초 안에 `2xx` 로 답하지 않으면 실패로 본다
 - 재시도 간격: 1분 → 5분 → 30분 → 2시간 → 12시간. 5번 실패하면 `failed` 로 멈추고 GP 대시보드에 표시 (BR-EVT-03)
 - 같은 LP에게 가는 이벤트는 순서대로 보낸다. 앞 이벤트가 실패 중이면 뒤 이벤트는 기다린다 (BR-EVT-04)

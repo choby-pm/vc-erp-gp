@@ -11,6 +11,8 @@ import {
   type LpType,
   type ProposalStatus,
 } from "@/lib/labels";
+
+export type DecidedVia = "gp" | "lp_system";
 import { getFundMinimum } from "@/lib/rules/fund-minimums";
 import type { CreateProposalInput, ProposalTransitionInput, UpdateProposalInput } from "@/lib/schemas/proposal";
 import { recordEvent } from "@/lib/services/events";
@@ -29,6 +31,7 @@ export type ProposalItem = {
   loc_amount: number | null;
   proposed_date: string;
   decided_date: string | null;
+  decided_via: DecidedVia | null; // 마지막으로 상태를 바꾼 곳. lp_system 이면 화면에 "LP 직접" (D45)
   memo: string | null; // GP 내부 메모 (LP 비공개)
   send_count: number;
   last_sent_at: Date | null;
@@ -60,7 +63,7 @@ export async function listProposals(fundId: string): Promise<FundProposals> {
 
   const items = await sql<ProposalItem[]>`
     select p.id, p.lp_id, lp.name as lp_name, lp.lp_type, p.status, p.proposed_amount, p.loc_amount,
-           p.proposed_date, p.decided_date, p.memo,
+           p.proposed_date, p.decided_date, p.decided_via, p.memo,
            count(n.id)::int as send_count, max(n.sent_at) as last_sent_at
     from lp_proposals p
     join limited_partners lp on lp.id = p.lp_id
@@ -109,12 +112,12 @@ async function lockFund(tx: typeof sql, fundId: string) {
   return fund;
 }
 
-type ProposalRow = { id: string; lp_id: string; status: ProposalStatus; proposed_amount: number | null; proposed_date: string };
+type ProposalRow = { id: string; lp_id: string; status: ProposalStatus; proposed_amount: number | null; loc_amount: number | null; proposed_date: string };
 
 async function lockProposal(tx: typeof sql, fundId: string, proposalId: string): Promise<ProposalRow> {
   assertUuid(proposalId, "출자 제안을");
   const [row] = await tx<ProposalRow[]>`
-    select id, lp_id, status, proposed_amount, proposed_date from lp_proposals
+    select id, lp_id, status, proposed_amount, loc_amount, proposed_date from lp_proposals
     where id = ${proposalId} and fund_id = ${fundId}
     for update
   `;
@@ -203,7 +206,7 @@ export async function transitionProposal(fundId: string, proposalId: string, inp
     }
 
     if (input.to_status === "reviewing") {
-      await tx`update lp_proposals set status = 'reviewing' where id = ${proposalId}`;
+      await tx`update lp_proposals set status = 'reviewing', decided_via = 'gp' where id = ${proposalId}`;
       return;
     }
 
@@ -222,12 +225,75 @@ export async function transitionProposal(fundId: string, proposalId: string, inp
         });
       }
       await tx`
-        update lp_proposals set status = 'committed', loc_amount = ${input.loc_amount}, decided_date = ${decidedDate}
+        update lp_proposals set status = 'committed', loc_amount = ${input.loc_amount}, decided_date = ${decidedDate}, decided_via = 'gp'
         where id = ${proposalId}
       `;
     } else {
-      await tx`update lp_proposals set status = 'declined', decided_date = ${decidedDate} where id = ${proposalId}`;
+      await tx`update lp_proposals set status = 'declined', decided_date = ${decidedDate}, decided_via = 'gp' where id = ${proposalId}`;
     }
+  });
+}
+
+// ─── LP 시스템의 응답 (D45) ────────────────────────────────────────────────
+
+export type LpProposalDecision = "reviewing" | "committed" | "declined";
+
+// LP 기관용 ERP가 심사 결과를 직접 알려준다: 검토 시작 / 확약(확약 금액) / 거절.
+// · 같은 요청을 다시 보내면 결과가 같다: 이미 그 상태(확약이면 같은 금액)면 바꾸지 않고 changed = false
+// · 확약·거절은 되돌릴 수 없다 (BR-PROP-01). 다른 결정·다른 금액으로 바꾸려 하면 PROPOSAL_CLOSED
+// · 발송하지 않은 제안은 LP가 모르는 제안이라 "없음"으로 답한다
+// · 이 변경은 LP 시스템이 한 것이라 연동 이벤트를 만들지 않는다 (D40 직접 투표와 같은 이유)
+export async function respondFromLpSystem(
+  lpId: string,
+  proposalId: string,
+  input: { decision: LpProposalDecision; loc_amount: number | null; decided_date: string | null },
+) {
+  assertUuid(proposalId, "출자 제안을");
+  return sql.begin(async (tx) => {
+    const t = tx as unknown as typeof sql;
+    const [found] = await tx<{ fund_id: string }[]>`
+      select p.fund_id from lp_proposals p
+      where p.id = ${proposalId} and p.lp_id = ${lpId}
+        and exists (select 1 from notices n where n.source_type = 'lp_proposal' and n.source_id = p.id and n.status = 'sent')
+    `;
+    if (!found) throw notFound("출자 제안을");
+
+    // 다른 제안 작업과 같은 순서(조합 → 제안)로 잠근다
+    const [fund] = await tx<{ status: FundStatus }[]>`select status from funds where id = ${found.fund_id} for update`;
+    const p = await lockProposal(t, found.fund_id, proposalId);
+
+    // 이미 원하는 상태면 그대로 (다시 보내기)
+    const same =
+      p.status === input.decision && (input.decision !== "committed" || p.loc_amount === input.loc_amount);
+    if (same) return { changed: false };
+
+    if (p.status === "committed" || p.status === "declined") {
+      const detail = p.status === "committed" ? `${formatKRW(p.loc_amount ?? 0)}으로 확약된` : "거절된";
+      throw closed(`이미 ${detail} 제안이라 바꿀 수 없습니다. 바꾸려면 GP에 요청하세요`);
+    }
+    if (!EDITABLE_FUND_STATUSES.includes(fund.status)) {
+      throw statusNotAllowed("BR-FUND-08", "결성 이후에는 출자 제안을 바꿀 수 없습니다");
+    }
+
+    if (input.decision === "reviewing") {
+      await tx`update lp_proposals set status = 'reviewing', decided_via = 'lp_system' where id = ${proposalId}`;
+      return { changed: true };
+    }
+
+    const decidedDate = input.decided_date ?? new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+    if (decidedDate < p.proposed_date) {
+      const message = `결정일은 제안일(${p.proposed_date}) 이후여야 합니다`;
+      throw new AppError(422, "INVALID_DATE", message, "BR-PROP-01", { fields: { decided_date: message } });
+    }
+    if (input.decision === "committed") {
+      await tx`
+        update lp_proposals set status = 'committed', loc_amount = ${input.loc_amount}, decided_date = ${decidedDate}, decided_via = 'lp_system'
+        where id = ${proposalId}
+      `;
+    } else {
+      await tx`update lp_proposals set status = 'declined', decided_date = ${decidedDate}, decided_via = 'lp_system' where id = ${proposalId}`;
+    }
+    return { changed: true };
   });
 }
 

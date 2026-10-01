@@ -213,6 +213,11 @@ function ProposalRow({ fundId, p, canEdit, canSend }: { fundId: string; p: Propo
               {p.lp_name}
             </Link>
             <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLOR[p.status]}`}>{PROPOSAL_STATUS_LABEL[p.status]}</span>
+            {p.decided_via === "lp_system" && (
+              <span title="LP 시스템이 연동 API로 응답했습니다 (D45)" className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+                LP 직접
+              </span>
+            )}
           </div>
           <p className="mt-0.5 text-xs text-slate-500">
             {LP_TYPE_LABEL[p.lp_type]} · 제안 {formatDate(p.proposed_date)}

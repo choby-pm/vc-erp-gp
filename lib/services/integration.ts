@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { after } from "next/server";
 import { sql } from "@/lib/db";
 import { AppError, assertUuid, notFound } from "@/lib/api/errors";
 import { jobStatus, runExclusive, type JobTrigger } from "@/lib/services/jobs";
@@ -8,8 +9,9 @@ import { jobStatus, runExclusive, type JobTrigger } from "@/lib/services/jobs";
 // · 서명: X-GP-Signature = sha256=HMAC(LP_WEBHOOK_SECRET, 타임스탬프 + "." + 본문)
 // · 실패하면 1분 → 5분 → 30분 → 2시간 → 12시간 뒤 다시 보낸다. 5번 실패하면 failed 로 멈춘다 (GP가 재전송)
 // · 같은 LP에게 가는 이벤트는 순서대로: 앞 이벤트가 전송되지 않았으면 뒤 이벤트는 기다린다
-// · 주기 작업 (D41): Vercel Cron 이 /api/cron/dispatch-events 를 부른다 (무료 요금제라 하루 1회, vercel.ts).
-//   수동 전송과 겹치지 않게 같은 잠금(dispatch_events)을 쓴다
+// · 바로 보내기 (D46): 이벤트를 만든 요청이 응답을 보낸 뒤 after() 로 전송을 시작한다 (dispatchSoon)
+// · 주기 작업 (D41): Vercel Cron 이 /api/cron/dispatch-events 를 부른다 (무료 요금제라 하루 1회, vercel.ts). 바로 보내기에서 실패한 것을 다시 보낸다
+//   바로 보내기·수동 전송과 겹치지 않게 같은 잠금(dispatch_events)을 쓴다
 
 export type EventStatus = "pending" | "delivered" | "failed";
 export type IntegrationEvent = {
@@ -41,10 +43,32 @@ export function integrationConfig() {
   };
 }
 
-// 잠금을 잡고 전송한다. 이미 다른 곳(Cron·다른 GP 사용자)이 보내는 중이면 건너뛴다
+// 잠금을 잡고 전송한다. 이미 다른 곳(Cron·다른 요청)이 보내는 중이면 건너뛴다.
+// 건너뛴 쪽의 이벤트를 놓치지 않게, 잠금을 가진 쪽은 새로 보낼 것이 없을 때까지 몇 번 더 돈다
 export async function dispatchEventsExclusive(trigger: JobTrigger) {
-  const run = await runExclusive(DISPATCH_JOB, trigger, 300, () => dispatchEvents());
+  const run = await runExclusive(DISPATCH_JOB, trigger, 300, async () => {
+    const total = await dispatchEvents();
+    for (let round = 1; round < 5 && total.configured && total.attempted > 0; round++) {
+      const next = await dispatchEvents();
+      if (next.attempted === 0) break;
+      total.attempted += next.attempted;
+      total.delivered += next.delivered;
+      total.failed += next.failed;
+      total.waiting = next.waiting;
+    }
+    return total;
+  });
   return run.ran ? { ...run.result, skipped: false } : { configured: true, attempted: 0, delivered: 0, failed: 0, waiting: 0, skipped: true };
+}
+
+// 이벤트를 만든 요청이 끝나면 바로 보낸다 (D46). 요청 밖(데이터 넣기 스크립트 등)에서는 after() 를 쓸 수 없어 건너뛰고 주기 작업에 맡긴다
+export function dispatchSoon() {
+  if (!process.env.LP_SYSTEM_WEBHOOK_URL || !process.env.LP_WEBHOOK_SECRET) return;
+  try {
+    after(() => dispatchEventsExclusive("auto").catch((err) => console.error("[dispatchSoon]", err)));
+  } catch {
+    // 요청 범위 밖
+  }
 }
 
 export async function listEvents(status?: EventStatus | null, limit = 100) {

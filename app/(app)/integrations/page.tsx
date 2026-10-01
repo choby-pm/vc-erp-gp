@@ -4,6 +4,7 @@ import NoPermission from "@/components/no-permission";
 import { getCurrentUser } from "@/lib/auth/session";
 import { formatDate } from "@/lib/format";
 import { DISPATCH_SCHEDULE_LABEL, listEvents, type EventStatus } from "@/lib/services/integration";
+import type { JobTrigger } from "@/lib/services/jobs";
 
 export const metadata = { title: "LP 연동 · VC ERP" };
 
@@ -19,6 +20,8 @@ const EVENT_LABEL: Record<string, string> = {
   "ledger.entry_created": "원장 기록",
   "meeting.result_finalized": "총회 결과",
 };
+const TRIGGER_LABEL: Record<JobTrigger, string> = { auto: "바로 보내기", cron: "주기 작업", manual: "수동" };
+
 const STATUS: Record<EventStatus, { label: string; color: string }> = {
   pending: { label: "대기", color: "bg-amber-50 text-amber-700" },
   delivered: { label: "전송 완료", color: "bg-emerald-50 text-emerald-700" },
@@ -78,7 +81,7 @@ export default async function IntegrationsPage(props: PageProps<"/integrations">
           {data.job?.last_started_at && (
             <p className="mt-3 text-sm text-slate-600">
               마지막 전송 {formatDate(data.job.last_started_at)} {new Date(data.job.last_started_at).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit" })} ·{" "}
-              {data.job.last_trigger === "cron" ? "자동" : "수동"}
+              {TRIGGER_LABEL[data.job.last_trigger ?? "manual"]}
               {data.job.running
                 ? " · 전송 중"
                 : data.job.last_error
@@ -87,7 +90,7 @@ export default async function IntegrationsPage(props: PageProps<"/integrations">
             </p>
           )}
           <p className="mt-3 text-xs text-slate-500">
-            자동 전송은 {DISPATCH_SCHEDULE_LABEL} 돌고, 그 사이에는 이 버튼으로 보냅니다. 실패하면 1분 → 5분 → 30분 → 2시간 → 12시간 뒤 다시 보내고, 5번 실패하면 멈춥니다. 같은 LP의 이벤트는 순서대로 보내 앞 이벤트가 멈추면 뒤 이벤트도 기다립니다.
+            이벤트가 생기면 바로 보내고(D46), 보내지 못한 것은 주기 작업이 {DISPATCH_SCHEDULE_LABEL} 다시 보냅니다. 이 버튼으로 지금 보낼 수도 있습니다. 실패하면 1분 → 5분 → 30분 → 2시간 → 12시간 뒤 다시 보내고, 5번 실패하면 멈춥니다. 같은 LP의 이벤트는 순서대로 보내 앞 이벤트가 멈추면 뒤 이벤트도 기다립니다.
           </p>
         </section>
       </div>

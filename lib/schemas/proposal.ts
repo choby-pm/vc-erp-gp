@@ -44,6 +44,18 @@ export const fundTransitionSchema = z.object({
   to_status: z.enum(FUND_STATUSES, { error: "이동할 상태를 선택하세요" }),
 });
 
+// LP 시스템의 출자 제안 응답 (LP 연동 API, D45). 확약이면 확약 금액 필수 (BR-PROP-02)
+export const lpProposalResponseSchema = z
+  .object({
+    decision: z.enum(["reviewing", "committed", "declined"], { error: "decision 은 reviewing / committed / declined 중 하나입니다" }),
+    loc_amount: amount("확약 금액").nullish().transform((v) => v ?? null),
+    decided_date: date("결정일").nullish().transform((v) => v ?? null),
+  })
+  .superRefine((v, ctx) => {
+    if (v.decision === "committed" && v.loc_amount === null) ctx.addIssue({ code: "custom", path: ["loc_amount"], message: "확약하려면 확약 금액을 입력하세요" });
+    if (v.decision !== "committed" && v.loc_amount !== null) ctx.addIssue({ code: "custom", path: ["loc_amount"], message: "확약 금액은 확약할 때만 보냅니다" });
+  });
+
 export type CreateProposalInput = z.infer<typeof createProposalSchema>;
 export type UpdateProposalInput = z.infer<typeof updateProposalSchema>;
 export type ProposalTransitionInput = z.infer<typeof proposalTransitionSchema>;

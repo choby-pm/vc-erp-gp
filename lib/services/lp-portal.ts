@@ -1,8 +1,9 @@
 import { sql } from "@/lib/db";
 import { AppError, assertUuid, notFound } from "@/lib/api/errors";
-import type { DistributionComponent, FundStatus, FundType, InstitutionType, LpType, ManagerRole, NoticeType, VoteChoice } from "@/lib/labels";
+import type { DistributionComponent, FundStatus, FundType, InstitutionType, LpType, ManagerRole, NoticeType, ProposalStatus, VoteChoice } from "@/lib/labels";
 import { openAttachment, publicAttachments } from "@/lib/services/attachments";
 import { recordLpVotes } from "@/lib/services/meetings";
+import { respondFromLpSystem, type DecidedVia, type LpProposalDecision } from "@/lib/services/proposals";
 import { termsEffectiveAt } from "@/lib/services/terms";
 
 // LP 연동 API가 돌려주는 데이터 (05 API 설계 5장, 03 DB 설계 7장 LP 공개 등급)
@@ -73,7 +74,7 @@ export async function lpFund(lpId: string, fundId: string) {
     select s.name, s.position, m.role, m.start_date, m.end_date
     from fund_managers m join staff s on s.id = m.staff_id
     where m.fund_id = ${fundId} and m.end_date is null
-    order by m.role, s.name
+    order by case m.role when 'lead' then 1 when 'key' then 2 else 3 end, s.name
   `;
   const [my] = (await lpFunds(lpId)).filter((f) => f.fund_id === fundId);
   return {
@@ -82,6 +83,7 @@ export async function lpFund(lpId: string, fundId: string) {
       version: t.version,
       effective_date: t.effective_date,
       primary_purpose: t.primary_purpose,
+      primary_purpose_min_ratio: t.primary_purpose_min_ratio, // 주목적 의무 투자 비율 → LP 쪽 조건 준수 점검 (D45)
       unit_amount: t.unit_amount,
       management_fee_rate: t.management_fee_rate,
       management_fee_rate_after: t.management_fee_rate_after,
@@ -178,23 +180,106 @@ export async function lpVote(lpId: string, fundId: string, meetingId: string, vo
 }
 
 // 🔵🟡 발행된 정기 보고 (스냅샷). 투자·평가·회수 정보는 이 스냅샷으로만 공개한다
+// · id: LP 시스템이 같은 보고를 두 번 저장하지 않게 식별용으로 준다 (D45)
+// · is_correction: 같은 기간에 먼저 발행된 보고가 있는 정정 보고 (D45)
+// · my: 기준일(period_end) 현재 내 지분율과 내 몫 평가액 (D45, LP 성과 지표용)
+//   내 몫 평가액 = (보유 기업 평가액 + 현금 잔액) × 기준일까지의 내 약정 ÷ 조합 약정 총액, 원 미만 버림.
+//   스냅샷 TVPI의 "잔여 가치 = 평가액 + 현금"과 같은 정의이고, 지분율은 약정액 기준이다 (D4)
 export async function lpReports(lpId: string, fundId: string) {
-  await memberIds(lpId, fundId);
+  const members = await memberIds(lpId, fundId);
   const reports = await sql<{ id: string; [k: string]: unknown }[]>`
     select r.id, r.period_type, r.period_start, r.period_end, r.gp_comment, r.snapshot,
-           (select min(n.sent_at) from notices n where n.source_type = 'report' and n.source_id = r.id) as published_at
-    from reports r where r.fund_id = ${fundId} and r.status = 'published'
+           (select min(n.sent_at) from notices n where n.source_type = 'report' and n.source_id = r.id) as published_at,
+           exists (
+             select 1 from reports o where o.fund_id = r.fund_id and o.id <> r.id and o.status = 'published'
+               and o.period_start = r.period_start and o.period_end = r.period_end and o.created_at < r.created_at
+           ) as is_correction,
+           json_build_object(
+             'ownership_ratio', case when c.total > 0 then round(c.mine / c.total, 6)::float8 end,
+             'nav_amount', case when c.total > 0 then floor(
+               ((r.snapshot->'totals'->>'current_value_amount')::numeric + (r.snapshot->'totals'->>'cash_amount')::numeric) * c.mine / c.total
+             )::bigint end
+           ) as my
+    from reports r
+    cross join lateral (
+      select coalesce(sum(e.amount) filter (where e.member_id = any(${members}::uuid[])), 0)::numeric as mine,
+             coalesce(sum(e.amount), 0)::numeric as total
+      from ledger_entries e
+      where e.fund_id = r.fund_id and e.entry_type = 'commitment' and e.entry_date <= r.period_end
+    ) c
+    where r.fund_id = ${fundId} and r.status = 'published'
     order by r.period_end desc, published_at desc
   `;
-  // 보고서 PDF (BR-FILE-02). 보고서 id 는 내부 문서 ID라 응답에서 뺀다
-  const files = await publicAttachments("report", reports.map((r) => r.id));
-  return reports.map(({ id, ...r }) => ({ ...r, attachments: files.get(id) ?? [] }));
+  const files = await publicAttachments("report", reports.map((r) => r.id)); // 보고서 PDF (BR-FILE-02)
+  return reports.map((r) => ({ ...r, attachments: files.get(r.id) ?? [] }));
 }
 
 // 🔵 첨부 파일 내려받기: 이 LP가 조합원인 조합의 규약 원문, 발행된 보고서 PDF만 (BR-FILE-02)
 export async function lpAttachment(lpId: string, fundId: string, attachmentId: string) {
   await memberIds(lpId, fundId);
   return openAttachment(fundId, attachmentId, { lpOnly: true });
+}
+
+// 🟢 내 출자 제안 (D45). 조합원이 되기 전에도 조회된다 (제안은 결성 전 일이므로)
+// · 발송한 제안만 (발송 전 제안은 LP가 모르는 GP 내부 작업)
+// · 결성 전이라 조합 상세 API(🔵 조합원만)를 쓸 수 없으므로, 제안 검토에 필요한 조합 정보만 함께 준다.
+//   제안서(통지 본문)에 이미 담긴 수준: 목표 결성액·기간·최신 규약의 보수 조건·주목적·운용 인력. GP 내부 메모는 넣지 않는다
+export type LpProposal = {
+  id: string;
+  status: ProposalStatus;
+  proposed_amount: number | null;
+  loc_amount: number | null;
+  proposed_date: string;
+  decided_date: string | null;
+  decided_via: DecidedVia | null;
+  last_sent_at: Date;
+  fund: Record<string, unknown>;
+};
+
+const selectLpProposals = (lpId: string, proposalId: string | null) => sql<LpProposal[]>`
+  select p.id, p.status, p.proposed_amount, p.loc_amount, p.proposed_date, p.decided_date, p.decided_via, s.last_sent_at,
+         json_build_object(
+           'id', f.id, 'name', f.name, 'fund_type', f.fund_type, 'gp_type', f.gp_type, 'status', f.status,
+           'target_amount', f.target_amount, 'term_years', f.term_years, 'investment_period_years', f.investment_period_years,
+           'formation_date', f.formation_date,
+           'terms', json_build_object(
+             'version', t.version, 'primary_purpose', t.primary_purpose, 'primary_purpose_min_ratio', t.primary_purpose_min_ratio::float8,
+             'unit_amount', t.unit_amount, 'management_fee_rate', t.management_fee_rate::float8,
+             'management_fee_rate_after', t.management_fee_rate_after::float8, 'carry_rate', t.carry_rate::float8, 'hurdle_rate', t.hurdle_rate::float8
+           ),
+           'managers', (
+             select coalesce(json_agg(json_build_object('name', st.name, 'position', st.position, 'role', m.role) order by case m.role when 'lead' then 1 when 'key' then 2 else 3 end, st.name), '[]')
+             from fund_managers m join staff st on st.id = m.staff_id
+             where m.fund_id = f.id and m.end_date is null
+           )
+         ) as fund
+  from lp_proposals p
+  join funds f on f.id = p.fund_id
+  cross join lateral (
+    select max(n.sent_at) as last_sent_at from notices n
+    where n.source_type = 'lp_proposal' and n.source_id = p.id and n.status = 'sent'
+  ) s
+  left join lateral (select * from fund_terms ft where ft.fund_id = f.id order by ft.version desc limit 1) t on true
+  where p.lp_id = ${lpId} and s.last_sent_at is not null
+    and (${proposalId}::uuid is null or p.id = ${proposalId}::uuid)
+  order by p.proposed_date desc, s.last_sent_at desc
+`;
+
+export async function lpProposals(lpId: string) {
+  await loadLp(lpId);
+  return selectLpProposals(lpId, null);
+}
+
+// 🟢 출자 제안 응답 (D45): reviewing / committed(확약 금액) / declined. 응답 후 그 제안을 돌려준다
+export async function lpRespondProposal(
+  lpId: string,
+  proposalId: string,
+  input: { decision: LpProposalDecision; loc_amount: number | null; decided_date: string | null },
+) {
+  await loadLp(lpId);
+  const { changed } = await respondFromLpSystem(lpId, proposalId, input);
+  const [proposal] = await selectLpProposals(lpId, proposalId);
+  return { ...proposal, changed };
 }
 
 // 🟢 받은 통지 전체 (조합원이 되기 전 출자 제안 포함)

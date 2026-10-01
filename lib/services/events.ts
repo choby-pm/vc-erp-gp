@@ -1,7 +1,9 @@
 import type { sql } from "@/lib/db";
+import { dispatchSoon } from "@/lib/services/integration";
 
 // LP 시스템 연동 이벤트 (아웃박스, D12)
-// 데이터를 바꾸는 트랜잭션 안에서 호출해야 한다 (BR-EVT-01). 별도 작업이 pending 이벤트를 LP 시스템에 전송한다.
+// 데이터를 바꾸는 트랜잭션 안에서 호출해야 한다 (BR-EVT-01). 요청이 끝나면 바로 LP 시스템에 전송하고(D46), 실패한 것은 주기 작업이 다시 보낸다.
+// (트랜잭션이 되돌려져도 전송 작업은 대기 중인 이벤트만 보내므로 문제없다)
 // payload 에는 🔴 비공개 데이터(메모, 내부 문서 ID 외 GP 전용 정보)를 넣지 않는다 (BR-EVT-05)
 
 export type EventType =
@@ -29,4 +31,5 @@ export async function recordEvent(
     insert into integration_events (event_type, aggregate_type, aggregate_id, lp_id, payload)
     values (${event.event_type}, ${event.aggregate_type}, ${event.aggregate_id}, ${event.lp_id}, ${tx.json(payload as never)})
   `;
+  dispatchSoon();
 }
