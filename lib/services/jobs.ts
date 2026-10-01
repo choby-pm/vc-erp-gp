@@ -4,7 +4,7 @@ import { sql } from "@/lib/db";
 // · 잠금은 임대(lease): locked_until 이 지난 경우에만 가져간다. 실행이 중간에 죽어도 그 시간이 지나면 다시 돌 수 있다
 // · 마지막 실행 결과를 남겨 LP 연동 화면에서 보여준다
 
-export type JobTrigger = "cron" | "manual";
+export type JobTrigger = "cron" | "manual" | "auto"; // auto: 이벤트를 만든 요청이 끝난 뒤 바로 전송 (D46)
 export type JobStatus = {
   name: string;
   last_trigger: JobTrigger | null;

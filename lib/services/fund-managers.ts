@@ -2,10 +2,12 @@ import { sql } from "@/lib/db";
 import { AppError, assertUuid, notFound, statusNotAllowed } from "@/lib/api/errors";
 import { EDITABLE_FUND_STATUSES, MANAGER_ROLE_LABEL, type FundStatus, type ManagerRole } from "@/lib/labels";
 import type { AppointManagerInput, EndManagerInput } from "@/lib/schemas/fund-manager";
+import { recordEvent } from "@/lib/services/events";
 
 // 조합 운용 인력 서비스 (D32)
 // · 조합 × 구성원 × 역할. 교체해도 행을 고치지 않고 해임일을 넣은 뒤 새 행을 추가해 이력을 남긴다 (BR-MGR-05)
 // · 기획·모집 중에는 자유롭게 선임·해임하고, 결성 이후에는 가결된 운용 인력 교체 안건이 필요하다 (BR-MGR-04)
+// · 운용 인력은 LP에게 공개되는 조합 정보(🔵)라 바뀌면 fund.updated 이벤트를 남긴다 (D45). LP 쪽 핵심 운용 인력 유지 조건 점검용
 
 export type FundManager = {
   id: string;
@@ -73,6 +75,10 @@ async function lockFundForChange(tx: typeof sql, fundId: string, agendaId: strin
   throw new AppError(409, "AGENDA_NOT_PASSED", "결성 이후에는 가결된 운용 인력 교체 안건이 있어야 선임·해임할 수 있습니다", "BR-MGR-04");
 }
 
+// 이름·역할만 (구성원 ID·사번은 GP 내부 정보)
+const managersUpdated = (tx: typeof sql, fundId: string, data: { action: "appointed" | "replaced" | "ended"; name: string; role: ManagerRole; date: string }) =>
+  recordEvent(tx, { event_type: "fund.updated", aggregate_type: "fund", aggregate_id: fundId, lp_id: null, fund_id: fundId, data: { changed: "managers", ...data } });
+
 const invalidDate = (field: string, message: string, rule: string) =>
   new AppError(422, "INVALID_DATE", message, rule, { fields: { [field]: message } });
 
@@ -137,6 +143,7 @@ export async function appointManager(fundId: string, input: AppointManagerInput,
       values (${fundId}, ${input.staff_id}, ${input.role}, ${input.start_date}, ${agendaId}, ${userId})
       returning id
     `;
+    await managersUpdated(t, fundId, { action: input.replaces_id ? "replaced" : "appointed", name: staff.name, role: input.role, date: input.start_date });
     return created;
   });
 }
@@ -145,8 +152,9 @@ export async function endManager(fundId: string, managerId: string, input: EndMa
   assertUuid(managerId, "운용 인력을");
   await sql.begin(async (tx) => {
     const agendaId = await lockFundForChange(tx as unknown as typeof sql, fundId, input.agenda_id);
-    const [row] = await tx<{ start_date: string; end_date: string | null }[]>`
-      select start_date, end_date from fund_managers where id = ${managerId} and fund_id = ${fundId} for update
+    const [row] = await tx<{ start_date: string; end_date: string | null; role: ManagerRole; name: string }[]>`
+      select m.start_date, m.end_date, m.role, s.name from fund_managers m join staff s on s.id = m.staff_id
+      where m.id = ${managerId} and m.fund_id = ${fundId} for update of m
     `;
     if (!row) throw notFound("운용 인력을");
     if (row.end_date) throw new AppError(409, "MANAGER_NOT_ACTIVE", "이미 해임된 운용 인력입니다", "BR-MGR-05");
@@ -157,5 +165,6 @@ export async function endManager(fundId: string, managerId: string, input: EndMa
       update fund_managers set end_date = ${input.end_date}, ended_by_agenda_id = ${agendaId}
       where id = ${managerId}
     `;
+    await managersUpdated(tx as unknown as typeof sql, fundId, { action: "ended", name: row.name, role: row.role, date: input.end_date });
   });
 }
