@@ -10,6 +10,7 @@
 //      바다성장출자는 3차 캐피탈콜을 절반만 납입 (기한 경과, LP ERP 대사·주의 목록 시연용)
 //      4차 캐피탈콜은 발송만 한다 (LP ERP R4 시연: 납입 기안 → 결재 → 송금 → GP 입금 기록 → 대사 "일치", LP L30)
 //      2026년 2분기 정기 보고 발행 (LP ERP R5 시연: 보고 수집·검토·조건 점검, LP L38)
+//      정기총회 소집 (안건 2개, 투표 가능 — LP ERP R5 시연: 투표 결재 → GP에 직접 투표, LP L38)
 //   ③ 모집 중인 '딥테크 스케일업 투자조합': 두 기관에 출자 제안 발송 (LP ERP의 제안 접수·심사 시연용)
 //
 // · 기존 조합의 숫자는 건드리지 않는다. 기존 조합에 조합원을 더하면 이미 발송한 캐피탈콜·분배의 비율이 어긋나기 때문이다
@@ -78,6 +79,16 @@ const FUND = {
   // 4차: 발송만 (아무도 납입하지 않음)
   fourthCall: { date: '2026-10-03', due: '2026-10-31', amount: 15, purpose: '제4차 출자 (투자 재원)' },
   // 2026년 2분기 보고: 발행 시각을 7월 말로 맞춘다
+  // 정기총회: 소집만 해 둔다 (개최 처리 전이라 LP가 직접 투표할 수 있다)
+  regularMeeting: {
+    date: '2026-10-30',
+    convenedAt: '2026-10-02',
+    location: 'VC ERP 데모 운용사 본사 대회의실',
+    agendas: [
+      { agenda_type: 'report_approval', title: '2026년 상반기 운용 보고 승인', description: '2026년 6월 30일 기준 운용 현황(투자 2건, 회수 1건, 분배 1회)과 2분기 보고 내용을 승인합니다.' },
+      { agenda_type: 'terms_amendment', title: '규약 변경: 후속 투자 한도 상향', description: '기존 투자 기업 후속 투자 한도를 조합 약정 총액의 20%에서 30%로 올립니다. 메디스캔AI 후속 투자 대비.' },
+    ],
+  },
   report: { year: 2026, quarter: 2, publishedAt: '2026-07-28', comment: '2분기 중 코드브릿지 구주 매각 계약 체결(6/30). 메디스캔AI는 후속 투자 유치 협의 중입니다.' },
 };
 
@@ -268,6 +279,22 @@ async function publishQuarterReport(U) {
   console.log(`• ${FUND.name} ${s.year}년 ${s.quarter}분기 보고 발행`);
 }
 
+// 정기총회 소집 (이미 있으면 건너뜀). 개최 처리는 하지 않는다 → LP가 투표할 수 있다
+async function conveneRegularMeeting(U) {
+  const s = FUND.regularMeeting;
+  const [fund] = await sql`select id from funds where name = ${FUND.name}`;
+  if (!fund) return;
+  const [dup] = await sql`select 1 from general_meetings where fund_id = ${fund.id} and meeting_type = 'regular' and meeting_date = ${s.date}`;
+  if (dup) return console.log(`• ${FUND.name} 정기총회(${s.date}): 이미 있어 건너뜁니다`);
+  const m = await meetings.createMeeting(fund.id, { meeting_type: 'regular', meeting_date: s.date, location: s.location, agendas: s.agendas }, U);
+  await meetings.conveneMeeting(fund.id, m.id, U);
+  await sql`
+    update notices set sent_at = (${s.convenedAt}::date::timestamp + interval '10 hours') at time zone 'Asia/Seoul'
+    where fund_id = ${fund.id} and source_type = 'general_meeting' and source_id = ${m.id}
+  `;
+  console.log(`• ${FUND.name} 정기총회 소집 (${s.date}, 안건 ${s.agendas.length}건, 투표 가능)`);
+}
+
 async function sendDeeptechOffers(lpIds, U) {
   const [fund] = await sql`select id, status from funds where name = ${DEEPTECH.name}`;
   if (!fund) return console.log(`• ${DEEPTECH.name}: 조합이 없어 건너뜁니다`);
@@ -298,6 +325,7 @@ try {
   await createDemoFund(U);
   await issueFourthCall(U);
   await publishQuarterReport(U);
+  await conveneRegularMeeting(U);
   await sendDeeptechOffers(lpIds, U);
 
   console.log('\nLP ERP 연결용 GP 출자자 ID (LP ERP R3 gp_lp_links 에 쓴다)');
