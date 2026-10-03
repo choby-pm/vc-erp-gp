@@ -9,6 +9,7 @@
 //      최초 납입 → 캐피탈콜 2회 → 투자 2건 → 회수 1건 → 분배 1회 → 3차 캐피탈콜
 //      바다성장출자는 3차 캐피탈콜을 절반만 납입 (기한 경과, LP ERP 대사·주의 목록 시연용)
 //      4차 캐피탈콜은 발송만 한다 (LP ERP R4 시연: 납입 기안 → 결재 → 송금 → GP 입금 기록 → 대사 "일치", LP L30)
+//      2026년 2분기 정기 보고 발행 (LP ERP R5 시연: 보고 수집·검토·조건 점검, LP L38)
 //   ③ 모집 중인 '딥테크 스케일업 투자조합': 두 기관에 출자 제안 발송 (LP ERP의 제안 접수·심사 시연용)
 //
 // · 기존 조합의 숫자는 건드리지 않는다. 기존 조합에 조합원을 더하면 이미 발송한 캐피탈콜·분배의 비율이 어긋나기 때문이다
@@ -36,6 +37,7 @@ const fees = await jiti.import('@/lib/services/management-fees.ts');
 const investments = await jiti.import('@/lib/services/investments.ts');
 const exits = await jiti.import('@/lib/services/exits.ts');
 const dist = await jiti.import('@/lib/services/distributions.ts');
+const reports = await jiti.import('@/lib/services/reports.ts');
 
 const 억 = 100_000_000;
 const addDays = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
@@ -75,6 +77,8 @@ const FUND = {
   thirdCall: { date: '2026-09-01', amount: 30, paid: '2026-09-08', partial: { lp: '바다성장출자', ratio: 0.5 } },
   // 4차: 발송만 (아무도 납입하지 않음)
   fourthCall: { date: '2026-10-03', due: '2026-10-31', amount: 15, purpose: '제4차 출자 (투자 재원)' },
+  // 2026년 2분기 보고: 발행 시각을 7월 말로 맞춘다
+  report: { year: 2026, quarter: 2, publishedAt: '2026-07-28', comment: '2분기 중 코드브릿지 구주 매각 계약 체결(6/30). 메디스캔AI는 후속 투자 유치 협의 중입니다.' },
 };
 
 // 모집 중인 조합에 보낼 출자 제안 (LP ERP 제안 접수 시연)
@@ -247,6 +251,23 @@ async function issueFourthCall(U) {
   console.log(`• ${FUND.name} 4차 캐피탈콜 ${s.amount}억 발송 (납입 없음, 기한 ${s.due})`);
 }
 
+// 2026년 2분기 정기 보고 발행 (이미 있으면 건너뜀)
+async function publishQuarterReport(U) {
+  const s = FUND.report;
+  const [fund] = await sql`select id from funds where name = ${FUND.name}`;
+  if (!fund) return;
+  const start = `${s.year}-${String((s.quarter - 1) * 3 + 1).padStart(2, '0')}-01`;
+  const [dup] = await sql`select 1 from reports where fund_id = ${fund.id} and period_type = 'quarterly' and period_start = ${start}`;
+  if (dup) return console.log(`• ${FUND.name} ${s.year}년 ${s.quarter}분기 보고: 이미 있어 건너뜁니다`);
+  const r = await reports.createReport(fund.id, { period_type: 'quarterly', year: s.year, period_no: s.quarter, gp_comment: s.comment }, U);
+  await reports.publishReport(fund.id, r.id, U);
+  await sql`
+    update notices set sent_at = (${s.publishedAt}::date::timestamp + interval '10 hours') at time zone 'Asia/Seoul'
+    where fund_id = ${fund.id} and source_type = 'report' and source_id = ${r.id}
+  `;
+  console.log(`• ${FUND.name} ${s.year}년 ${s.quarter}분기 보고 발행`);
+}
+
 async function sendDeeptechOffers(lpIds, U) {
   const [fund] = await sql`select id, status from funds where name = ${DEEPTECH.name}`;
   if (!fund) return console.log(`• ${DEEPTECH.name}: 조합이 없어 건너뜁니다`);
@@ -276,6 +297,7 @@ try {
   const lpIds = await ensureLps(U);
   await createDemoFund(U);
   await issueFourthCall(U);
+  await publishQuarterReport(U);
   await sendDeeptechOffers(lpIds, U);
 
   console.log('\nLP ERP 연결용 GP 출자자 ID (LP ERP R3 gp_lp_links 에 쓴다)');
