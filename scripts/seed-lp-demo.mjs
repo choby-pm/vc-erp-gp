@@ -11,6 +11,7 @@
 //      4차 캐피탈콜은 발송만 한다 (LP ERP R4 시연: 납입 기안 → 결재 → 송금 → GP 입금 기록 → 대사 "일치", LP L30)
 //      2026년 2분기 정기 보고 발행 (LP ERP R5 시연: 보고 수집·검토·조건 점검, LP L38)
 //      정기총회 소집 (안건 2개, 투표 가능 — LP ERP R5 시연: 투표 결재 → GP에 직접 투표, LP L38)
+//      2차 분배 확정 (지급 전 — LP ERP R6 시연: 수령 대기 → GP 지급 → LP 수령 기록 → 분배 대사, LP L43)
 //   ③ 모집 중인 '딥테크 스케일업 투자조합': 두 기관에 출자 제안 발송 (LP ERP의 제안 접수·심사 시연용)
 //
 // · 기존 조합의 숫자는 건드리지 않는다. 기존 조합에 조합원을 더하면 이미 발송한 캐피탈콜·분배의 비율이 어긋나기 때문이다
@@ -78,6 +79,8 @@ const FUND = {
   thirdCall: { date: '2026-09-01', amount: 30, paid: '2026-09-08', partial: { lp: '바다성장출자', ratio: 0.5 } },
   // 4차: 발송만 (아무도 납입하지 않음)
   fourthCall: { date: '2026-10-03', due: '2026-10-31', amount: 15, purpose: '제4차 출자 (투자 재원)' },
+  // 2차 분배: 확정만 (지급하지 않음)
+  secondDistribution: { date: '2026-10-20', amount: 20, confirmedAt: '2026-10-02', memo: '메디스캔AI 일부 구주 매각 대금 분배' },
   // 2026년 2분기 보고: 발행 시각을 7월 말로 맞춘다
   // 정기총회: 소집만 해 둔다 (개최 처리 전이라 LP가 직접 투표할 수 있다)
   regularMeeting: {
@@ -295,6 +298,20 @@ async function conveneRegularMeeting(U) {
   console.log(`• ${FUND.name} 정기총회 소집 (${s.date}, 안건 ${s.agendas.length}건, 투표 가능)`);
 }
 
+// 2차 분배 확정 (이미 있으면 건너뜀). 지급은 하지 않는다 → LP "수령 대기"
+async function confirmSecondDistribution(U) {
+  const s = FUND.secondDistribution;
+  const [fund] = await sql`select id from funds where name = ${FUND.name}`;
+  if (!fund) return;
+  const [dup] = await sql`select 1 from distributions where fund_id = ${fund.id} and distribution_no = 2`;
+  if (dup) return console.log(`• ${FUND.name} 2차 분배: 이미 있어 건너뜁니다`);
+  const d = await dist.createDistribution(fund.id, { distribution_date: s.date, distributable_amount: s.amount * 억, is_final: false, memo: s.memo }, U);
+  await dist.confirmDistribution(fund.id, d.id, U);
+  await sql`update distributions set confirmed_at = (${s.confirmedAt}::date::timestamp + interval '10 hours') at time zone 'Asia/Seoul' where id = ${d.id}`;
+  await sql`update notices n set sent_at = d.confirmed_at from distributions d where n.source_id = d.id and n.notice_type = 'distribution' and d.id = ${d.id}`;
+  console.log(`• ${FUND.name} 2차 분배 ${s.amount}억 확정 (지급 전, 분배일 ${s.date})`);
+}
+
 async function sendDeeptechOffers(lpIds, U) {
   const [fund] = await sql`select id, status from funds where name = ${DEEPTECH.name}`;
   if (!fund) return console.log(`• ${DEEPTECH.name}: 조합이 없어 건너뜁니다`);
@@ -326,6 +343,7 @@ try {
   await issueFourthCall(U);
   await publishQuarterReport(U);
   await conveneRegularMeeting(U);
+  await confirmSecondDistribution(U);
   await sendDeeptechOffers(lpIds, U);
 
   console.log('\nLP ERP 연결용 GP 출자자 ID (LP ERP R3 gp_lp_links 에 쓴다)');
