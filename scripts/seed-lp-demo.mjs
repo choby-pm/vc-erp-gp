@@ -8,6 +8,7 @@
 //      조합원: GP + 하늘연금 + 바다성장출자 + 미래 연금기금 + 가온 캐피탈
 //      최초 납입 → 캐피탈콜 2회 → 투자 2건 → 회수 1건 → 분배 1회 → 3차 캐피탈콜
 //      바다성장출자는 3차 캐피탈콜을 절반만 납입 (기한 경과, LP ERP 대사·주의 목록 시연용)
+//      4차 캐피탈콜은 발송만 한다 (LP ERP R4 시연: 납입 기안 → 결재 → 송금 → GP 입금 기록 → 대사 "일치", LP L30)
 //   ③ 모집 중인 '딥테크 스케일업 투자조합': 두 기관에 출자 제안 발송 (LP ERP의 제안 접수·심사 시연용)
 //
 // · 기존 조합의 숫자는 건드리지 않는다. 기존 조합에 조합원을 더하면 이미 발송한 캐피탈콜·분배의 비율이 어긋나기 때문이다
@@ -72,6 +73,8 @@ const FUND = {
   distribution: ['2026-07-15', 30, '코드브릿지 매각 대금 분배'],
   // 3차: 바다성장출자만 절반 납입, 나머지는 완납 (기한 2026-09-15 경과)
   thirdCall: { date: '2026-09-01', amount: 30, paid: '2026-09-08', partial: { lp: '바다성장출자', ratio: 0.5 } },
+  // 4차: 발송만 (아무도 납입하지 않음)
+  fourthCall: { date: '2026-10-03', due: '2026-10-31', amount: 15, purpose: '제4차 출자 (투자 재원)' },
 };
 
 // 모집 중인 조합에 보낼 출자 제안 (LP ERP 제안 접수 시연)
@@ -228,6 +231,22 @@ async function createDemoFund(U) {
   `;
 }
 
+// 4차 캐피탈콜: 발송만 해 둔다. 조합이 있고 4회가 아직 없을 때만 (이미 있으면 건너뜀)
+async function issueFourthCall(U) {
+  const s = FUND.fourthCall;
+  const [fund] = await sql`select id from funds where name = ${FUND.name}`;
+  if (!fund) return;
+  const [dup] = await sql`select 1 from capital_calls where fund_id = ${fund.id} and call_no = 4`;
+  if (dup) return console.log(`• ${FUND.name} 4차 캐피탈콜: 이미 있어 건너뜁니다`);
+  const c = await calls.createCapitalCall(fund.id, { total_call_amount: s.amount * 억, call_all_unfunded: false, call_date: s.date, due_date: s.due, purpose: s.purpose }, U);
+  await calls.issueCapitalCall(fund.id, c.id, U);
+  await sql`
+    update notices n set sent_at = (${s.date}::date::timestamp + interval '10 hours') at time zone 'Asia/Seoul'
+    from capital_call_items i where n.fund_id = ${fund.id} and n.source_type = 'capital_call_item' and n.source_id = i.id and i.capital_call_id = ${c.id}
+  `;
+  console.log(`• ${FUND.name} 4차 캐피탈콜 ${s.amount}억 발송 (납입 없음, 기한 ${s.due})`);
+}
+
 async function sendDeeptechOffers(lpIds, U) {
   const [fund] = await sql`select id, status from funds where name = ${DEEPTECH.name}`;
   if (!fund) return console.log(`• ${DEEPTECH.name}: 조합이 없어 건너뜁니다`);
@@ -256,6 +275,7 @@ try {
 
   const lpIds = await ensureLps(U);
   await createDemoFund(U);
+  await issueFourthCall(U);
   await sendDeeptechOffers(lpIds, U);
 
   console.log('\nLP ERP 연결용 GP 출자자 ID (LP ERP R3 gp_lp_links 에 쓴다)');
