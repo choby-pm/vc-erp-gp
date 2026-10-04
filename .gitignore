@@ -48,3 +48,6 @@ next-env.d.ts
 
 # 데모 계정 비밀번호 (scripts/seed-staff.mjs 가 생성)
 demo-accounts.md
+
+# QA 실행 결과 (npm run qa:gp)
+.qa-result.json

@@ -16,6 +16,8 @@
     "db:seed-sample-lifecycle": "node --env-file=.env.local scripts/seed-sample-lifecycle.mjs",
     "db:backfill-journal": "node --env-file=.env.local scripts/backfill-journal.mjs",
     "db:demo-refresh": "node --env-file=.env.local scripts/demo-refresh.mjs",
+    "qa:gp": "node --env-file=.env.local scripts/qa-gp.mjs",
+    "qa:gp-report": "node scripts/qa-gp-report.mjs",
     "db:seed-lp-demo": "node --env-file=.env.local scripts/seed-lp-demo.mjs"
   },
   "dependencies": {
@@ -34,6 +36,7 @@
     "@vercel/config": "^0.7.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
+    "exceljs": "^4.4.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
