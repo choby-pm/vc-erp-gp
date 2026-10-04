@@ -2,7 +2,7 @@ import Link from "next/link";
 import FundManagersPanel from "@/components/fund-managers-panel";
 import { InstitutionsPanel, RegistrationPanel } from "@/components/fund-registration-panel";
 import { formatDate, formatKRW, formatKRWFull, formatPercent } from "@/lib/format";
-import { FUND_TYPE_LABEL, GP_TYPE_LABEL } from "@/lib/labels";
+import { FUND_STRATEGY_LABEL, FUND_TYPE_LABEL, GP_TYPE_LABEL } from "@/lib/labels";
 import { loadOrNotFound } from "@/lib/page-helpers";
 import { listFundManagers } from "@/lib/services/fund-managers";
 import { getFund } from "@/lib/services/funds";
@@ -25,6 +25,7 @@ export default async function FundProfilePage(props: PageProps<"/funds/[fundId]/
 
   const basic: [string, React.ReactNode][] = [
     ["조합 유형", FUND_TYPE_LABEL[fund.fund_type]],
+    ["조합 분야", FUND_STRATEGY_LABEL[fund.strategy]],
     ["결성 주체", GP_TYPE_LABEL[fund.gp_type]],
     ["목표 결성액", <span key="t" title={formatKRWFull(fund.target_amount)}>{formatKRW(fund.target_amount)}</span>],
     ["최소 결성액", fund.minimum.minFundAmount !== null ? formatKRW(fund.minimum.minFundAmount) : <span key="m" className="text-amber-700">기준 확인 필요</span>],

@@ -63,7 +63,7 @@ export async function lpFund(lpId: string, fundId: string) {
   await memberIds(lpId, fundId);
   // target_amount·gp_type·total_commitment_amount(결성액 = 조합 전체 약정 합계)는 LP ERP의 조합 정보·결성 확인용 (D45 보완)
   const [fund] = await sql<{ id: string; name: string; fund_type: FundType; gp_type: string; status: FundStatus; target_amount: number; total_commitment_amount: number; formation_date: string | null; dissolution_date: string | null; liquidation_date: string | null; term_years: number; investment_period_years: number }[]>`
-    select f.id, f.name, f.fund_type, f.gp_type, f.status, f.target_amount,
+    select f.id, f.name, f.fund_type, f.strategy, f.gp_type, f.status, f.target_amount,
            (select coalesce(sum(e.amount), 0) from ledger_entries e where e.fund_id = f.id and e.entry_type = 'commitment')::bigint as total_commitment_amount,
            f.formation_date, f.dissolution_date, f.liquidation_date, f.term_years, f.investment_period_years
     from funds f where f.id = ${fundId}
@@ -236,14 +236,18 @@ export type LpProposal = {
   proposed_date: string;
   decided_date: string | null;
   decided_via: DecidedVia | null;
-  last_sent_at: Date;
+  last_sent_at: Date | null; // 통지로 보낸 마지막 시각. 공고 지원(D47)은 통지 없이도 보인다
+  // 공고 지원이면 LP ERP 출자사업 · 부문 (D47). LP ERP는 이것으로 공고 부문에 접수한다
+  application: { program_id: string; track_id: string; applied_at: Date } | null;
   fund: Record<string, unknown>;
 };
 
 const selectLpProposals = (lpId: string, proposalId: string | null) => sql<LpProposal[]>`
   select p.id, p.status, p.proposed_amount, p.loc_amount, p.proposed_date, p.decided_date, p.decided_via, s.last_sent_at,
+         case when p.lp_program_id is null then null
+              else json_build_object('program_id', p.lp_program_id, 'track_id', p.lp_track_id, 'applied_at', p.applied_at) end as application,
          json_build_object(
-           'id', f.id, 'name', f.name, 'fund_type', f.fund_type, 'gp_type', f.gp_type, 'status', f.status,
+           'id', f.id, 'name', f.name, 'fund_type', f.fund_type, 'strategy', f.strategy, 'gp_type', f.gp_type, 'status', f.status,
            'target_amount', f.target_amount, 'term_years', f.term_years, 'investment_period_years', f.investment_period_years,
            'formation_date', f.formation_date,
            'terms', json_build_object(
@@ -264,9 +268,9 @@ const selectLpProposals = (lpId: string, proposalId: string | null) => sql<LpPro
     where n.source_type = 'lp_proposal' and n.source_id = p.id and n.status = 'sent'
   ) s
   left join lateral (select * from fund_terms ft where ft.fund_id = f.id order by ft.version desc limit 1) t on true
-  where p.lp_id = ${lpId} and s.last_sent_at is not null
+  where p.lp_id = ${lpId} and (s.last_sent_at is not null or p.applied_at is not null)
     and (${proposalId}::uuid is null or p.id = ${proposalId}::uuid)
-  order by p.proposed_date desc, s.last_sent_at desc
+  order by p.proposed_date desc, s.last_sent_at desc nulls last
 `;
 
 export async function lpProposals(lpId: string) {

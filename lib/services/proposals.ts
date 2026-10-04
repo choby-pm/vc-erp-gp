@@ -35,6 +35,12 @@ export type ProposalItem = {
   memo: string | null; // GP 내부 메모 (LP 비공개)
   send_count: number;
   last_sent_at: Date | null;
+  // LP ERP 공고 지원으로 만든 제안 (D47)
+  program_name: string | null;
+  track_name: string | null;
+  applied_at: Date | null;
+  apply_sent_at: Date | null;
+  apply_error: string | null;
 };
 
 export type FundraisingSummary = {
@@ -64,6 +70,7 @@ export async function listProposals(fundId: string): Promise<FundProposals> {
   const items = await sql<ProposalItem[]>`
     select p.id, p.lp_id, lp.name as lp_name, lp.lp_type, p.status, p.proposed_amount, p.loc_amount,
            p.proposed_date, p.decided_date, p.decided_via, p.memo,
+           p.program_name, p.track_name, p.applied_at, p.apply_sent_at, p.apply_error,
            count(n.id)::int as send_count, max(n.sent_at) as last_sent_at
     from lp_proposals p
     join limited_partners lp on lp.id = p.lp_id

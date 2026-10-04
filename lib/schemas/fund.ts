@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FUND_TYPES, GP_TYPES } from "@/lib/labels";
+import { FUND_STRATEGIES, FUND_TYPES, GP_TYPES } from "@/lib/labels";
 
 // 조합 API 요청 형식 (05 API 설계 3-3). 비율은 소수(0.02 = 2%)로 받는다
 
@@ -10,6 +10,7 @@ export const fundBasicSchema = z
   .object({
     name: z.string({ error: "조합명을 입력하세요" }).trim().min(1, "조합명을 입력하세요").max(100, "조합명은 100자 이하로 입력하세요"),
     fund_type: z.enum(FUND_TYPES, { error: "조합 유형을 선택하세요" }),
+    strategy: z.enum(FUND_STRATEGIES, { error: "조합 분야를 선택하세요" }), // 출자기관 공고 부문과 맞춰 본다 (D47)
     gp_type: z.enum(GP_TYPES, { error: "결성 주체 유형을 선택하세요" }),
     target_amount: z
       .number({ error: "목표 결성액을 입력하세요" })

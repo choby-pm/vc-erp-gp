@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { FundStatusBadge } from "@/components/fund-status";
 import { formatDate, formatKRW, formatKRWFull, formatPercent } from "@/lib/format";
-import { FUND_TYPE_LABEL } from "@/lib/labels";
+import { FUND_STRATEGY_LABEL, FUND_TYPE_LABEL } from "@/lib/labels";
 import { listFunds } from "@/lib/services/funds";
 
 export const metadata = { title: "조합 · VC ERP" };
@@ -48,7 +48,7 @@ export default async function FundsPage() {
                     <Link href={`/funds/${fund.id}`} className="font-semibold text-slate-900 hover:text-indigo-600">
                       {fund.name}
                     </Link>
-                    <p className="text-xs text-slate-500">{FUND_TYPE_LABEL[fund.fund_type]}</p>
+                    <p className="text-xs text-slate-500">{FUND_TYPE_LABEL[fund.fund_type]} · {FUND_STRATEGY_LABEL[fund.strategy]}</p>
                   </td>
                   <td className="px-4 py-3">
                     <FundStatusBadge status={fund.status} />

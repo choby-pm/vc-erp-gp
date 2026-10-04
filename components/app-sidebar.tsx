@@ -30,6 +30,7 @@ const SECTIONS: { title: string; items: Item[]; adminOnly?: boolean }[] = [
     items: [
       { href: "/", label: "대시보드", icon: icon("M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z") },
       { href: "/funds", label: "조합", icon: icon("M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6") },
+      { href: "/calls", label: "출자사업 공고", icon: icon("M3 11l18-5v12L3 14v-3zM11.6 16.8a3 3 0 1 1-5.8-1.6") }, // LP ERP 공고 게시판 (D47)
       { href: "/deals", label: "딜·기업", icon: icon("M4 5h4v14H4zM10 5h4v9h-4zM16 5h4v5h-4z"), also: ["/companies"] },
     ],
   },

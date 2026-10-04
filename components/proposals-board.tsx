@@ -218,12 +218,32 @@ function ProposalRow({ fundId, p, canEdit, canSend }: { fundId: string; p: Propo
                 LP 직접
               </span>
             )}
+            {p.applied_at && (
+              <span title="LP ERP 출자사업 공고에 지원해 만든 제안입니다 (D47)" className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                공고 지원
+              </span>
+            )}
           </div>
+          {p.applied_at && (
+            <p className="mt-0.5 text-xs text-slate-600">
+              {p.program_name} · {p.track_name} ·{" "}
+              {p.apply_sent_at ? (
+                <span className="text-emerald-700">접수됨 {formatDate(p.apply_sent_at)}</span>
+              ) : (
+                <span className="text-rose-700">
+                  보내지 못함 — {p.apply_error ?? "확인 필요"}{" "}
+                  <button type="button" disabled={busy} onClick={() => call("POST", `/${p.id}/send-application`)} className="font-semibold underline">
+                    다시 보내기
+                  </button>
+                </span>
+              )}
+            </p>
+          )}
           <p className="mt-0.5 text-xs text-slate-500">
             {LP_TYPE_LABEL[p.lp_type]} · 제안 {formatDate(p.proposed_date)}
             {p.decided_date && ` · ${p.status === "committed" ? "확약" : "거절"} ${formatDate(p.decided_date)}`}
             {" · "}
-            {p.send_count > 0 ? `발송 ${p.send_count}회 (최근 ${formatDate(p.last_sent_at)})` : "미발송"}
+            {p.send_count > 0 ? `발송 ${p.send_count}회 (최근 ${formatDate(p.last_sent_at)})` : p.applied_at ? "공고 지원 (통지 없음)" : "미발송"}
           </p>
           {p.memo && <p className="mt-1 text-xs text-amber-800">메모: {p.memo}</p>}
         </div>

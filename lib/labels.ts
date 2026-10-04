@@ -232,3 +232,8 @@ export const NOTICE_TYPE_LABEL: Record<NoticeType, string> = {
   distribution: "분배",
   general: "일반 공지",
 };
+
+// 조합 분야 (D47 보완, 마이그레이션 018). LP ERP 출자 분야와 같은 분류 (🔗 LP lib/labels.ts) ⚠️ 기관마다 분류가 다를 수 있다
+export const FUND_STRATEGIES = ["early", "growth", "secondary", "overseas", "other"] as const;
+export type FundStrategy = (typeof FUND_STRATEGIES)[number];
+export const FUND_STRATEGY_LABEL: Record<FundStrategy, string> = { early: "초기", growth: "성장", secondary: "세컨더리", overseas: "해외", other: "기타" };
