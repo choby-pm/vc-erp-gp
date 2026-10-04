@@ -2,7 +2,7 @@ import { cache } from "react";
 import { sql } from "@/lib/db";
 import { AppError, assertUuid, notFound, statusNotAllowed } from "@/lib/api/errors";
 import { formatKRW } from "@/lib/format";
-import { EDITABLE_FUND_STATUSES, type FundStatus, type FundType, type GpType } from "@/lib/labels";
+import { EDITABLE_FUND_STATUSES, type FundStatus, type FundStrategy, type FundType, type GpType } from "@/lib/labels";
 import { getFundMinimum, type FundMinimum } from "@/lib/rules/fund-minimums";
 import type { FundBasicInput, FundTermsInput } from "@/lib/schemas/fund";
 import { assertNoActiveRoster } from "@/lib/services/roster";
@@ -14,6 +14,7 @@ export type FundListItem = {
   id: string;
   name: string;
   fund_type: FundType;
+  strategy: FundStrategy; // 조합 분야 (D47)
   gp_type: GpType;
   status: FundStatus;
   target_amount: number;
@@ -96,7 +97,7 @@ function assertUnitAmount(fund: Pick<FundBasicInput, "fund_type" | "gp_type">, u
 // 목록에는 결성 전 조합의 모집 진행을 보여주려고 확약 금액 합(BR-PROP-04)을 함께 준다
 export async function listFunds() {
   return sql<(FundListItem & { committed_loc_amount: number })[]>`
-    select f.id, f.name, f.fund_type, f.gp_type, f.status, f.target_amount, f.created_at,
+    select f.id, f.name, f.fund_type, f.strategy, f.gp_type, f.status, f.target_amount, f.created_at,
            s.total_commitment_amount, s.total_paid_amount,
            coalesce((select sum(p.loc_amount) from lp_proposals p where p.fund_id = f.id and p.status = 'committed'), 0)::bigint
              as committed_loc_amount
@@ -109,8 +110,8 @@ export async function listFunds() {
 // 조합 화면 공통 틀(이름·상태·탭)에 필요한 것만 한 번에. 같은 요청 안에서는 한 번만 조회한다 (layout + page)
 export const getFundHeader = cache(async (fundId: string) => {
   assertUuid(fundId, "조합을");
-  const [fund] = await sql<{ id: string; name: string; fund_type: FundType; status: FundStatus; formation_date: string | null }[]>`
-    select id, name, fund_type, status, formation_date from funds where id = ${fundId}
+  const [fund] = await sql<{ id: string; name: string; fund_type: FundType; strategy: FundStrategy; status: FundStatus; formation_date: string | null }[]>`
+    select id, name, fund_type, strategy, status, formation_date from funds where id = ${fundId}
   `;
   if (!fund) throw notFound("조합을");
   return { ...fund, editable: EDITABLE_FUND_STATUSES.includes(fund.status) };
@@ -124,7 +125,7 @@ export async function getFund(fundId: string): Promise<FundDetail> {
   const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
   const [[fund], [terms], [scheduled]] = await Promise.all([
     sql`
-      select f.id, f.name, f.fund_type, f.gp_type, f.status, f.target_amount, f.term_years, f.investment_period_years,
+      select f.id, f.name, f.fund_type, f.strategy, f.gp_type, f.status, f.target_amount, f.term_years, f.investment_period_years,
              f.formation_date, f.registration_applied_date, f.registration_completed_date, f.created_at,
              s.total_commitment_amount, s.total_paid_amount, s.maturity_date, s.investment_period_end_date
       from funds f
@@ -171,8 +172,8 @@ export async function createFund(fund: FundBasicInput, terms: FundTermsInput, us
 
   return sql.begin(async (tx) => {
     const [created] = await tx<{ id: string }[]>`
-      insert into funds (name, fund_type, gp_type, target_amount, term_years, investment_period_years, created_by)
-      values (${fund.name}, ${fund.fund_type}, ${fund.gp_type}, ${fund.target_amount}, ${fund.term_years},
+      insert into funds (name, fund_type, strategy, gp_type, target_amount, term_years, investment_period_years, created_by)
+      values (${fund.name}, ${fund.fund_type}, ${fund.strategy ?? "other"}, ${fund.gp_type}, ${fund.target_amount}, ${fund.term_years},
               ${fund.investment_period_years}, ${userId})
       returning id
     `;
@@ -209,7 +210,7 @@ export async function updateFundBasic(fundId: string, fund: FundBasicInput) {
     assertUnitAmount(fund, terms.unit_amount, "terms."); // 규약 칸의 오류로 표시
 
     await tx`
-      update funds set ${tx(fund, "name", "fund_type", "gp_type", "target_amount", "term_years", "investment_period_years")}
+      update funds set ${tx(fund, "name", "fund_type", "strategy", "gp_type", "target_amount", "term_years", "investment_period_years")}
       where id = ${fundId}
     `;
   });

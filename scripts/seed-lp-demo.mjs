@@ -333,6 +333,27 @@ async function sendDeeptechOffers(lpIds, U) {
   }
 }
 
+// 조합 분야 (마이그레이션 018, D47 보완). 이미 있는 조합은 '기타'로 채워졌으니 데모 조합의 실제 분야를 넣는다
+const FUND_STRATEGY = {
+  '그로스 1호 벤처투자조합': 'growth',
+  '딥테크 스케일업 투자조합': 'growth',
+  '넥스트 바이오 벤처투자조합': 'early',
+  'AI 퓨처 벤처투자조합': 'early',
+  '그린에너지 신기술투자조합': 'growth',
+  '로컬크리에이터 초기투자조합': 'early',
+  '씨앗 1호 벤처투자조합': 'early',
+  '브릿지 2호 벤처투자조합': 'secondary',
+  'LP연동 데모 벤처투자조합': 'growth',
+};
+async function fillFundStrategies() {
+  let n = 0;
+  for (const [name, strategy] of Object.entries(FUND_STRATEGY)) {
+    const r = await sql`update funds set strategy = ${strategy} where name = ${name} and strategy <> ${strategy} returning id`;
+    n += r.length;
+  }
+  console.log(`• 조합 분야: ${n ? `${n}개 채움` : '이미 채워짐'}`);
+}
+
 try {
   const [demo] = await sql`select id from users where email = 'demo@vc-erp.dev'`;
   if (!demo) throw new Error('데모 계정이 없습니다. npm run db:seed-staff 를 먼저 실행하세요');
@@ -344,6 +365,7 @@ try {
   await publishQuarterReport(U);
   await conveneRegularMeeting(U);
   await confirmSecondDistribution(U);
+  await fillFundStrategies();
   await sendDeeptechOffers(lpIds, U);
 
   console.log('\nLP ERP 연결용 GP 출자자 ID (LP ERP R3 gp_lp_links 에 쓴다)');

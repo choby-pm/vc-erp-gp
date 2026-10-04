@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { formatKRW, percentToRatio, ratioToPercent } from "@/lib/format";
-import { FUND_TYPES, FUND_TYPE_LABEL, GP_TYPES, GP_TYPE_LABEL, type FundType, type GpType } from "@/lib/labels";
+import { FUND_STRATEGIES, FUND_STRATEGY_LABEL, FUND_TYPES, FUND_TYPE_LABEL, GP_TYPES, GP_TYPE_LABEL, type FundStrategy, type FundType, type GpType } from "@/lib/labels";
 import { LARGE_AMOUNT_WARNING, getFundMinimum } from "@/lib/rules/fund-minimums";
 import type { FundDetail } from "@/lib/services/funds";
 
@@ -47,6 +47,7 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
 
   const [name, setName] = useState(fund?.name ?? "");
   const [fundType, setFundType] = useState<FundType>(fund?.fund_type ?? "venture");
+  const [strategy, setStrategy] = useState<FundStrategy>(fund?.strategy ?? "early");
   const [gpType, setGpType] = useState<GpType>(fund?.gp_type ?? "venture_capital");
   const [unitAmount, setUnitAmount] = useState(fund ? String(fund.terms.unit_amount) : "1000000");
   const [targetAmount, setTargetAmount] = useState(fund ? String(fund.target_amount) : "");
@@ -92,6 +93,7 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
     const basic = {
       name,
       fund_type: fundType,
+      strategy,
       gp_type: gpType,
       target_amount: toNumber(targetAmount.replaceAll(",", "")),
       term_years: toNumber(termYears),
@@ -165,6 +167,18 @@ export default function FundForm({ fund }: { fund?: FundDetail }) {
               ))}
             </select>
             {fieldError("fund.fund_type")}
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700">조합 분야</span>
+            <select value={strategy} onChange={(e) => setStrategy(e.target.value as FundStrategy)} name="fund.strategy" className={inputClass("fund.strategy")}>
+              {FUND_STRATEGIES.map((t) => (
+                <option key={t} value={t}>
+                  {FUND_STRATEGY_LABEL[t]}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-500">출자기관 공고의 모집 부문과 맞춰 봅니다. 분야가 다른 부문에는 지원할 수 없습니다</p>
+            {fieldError("fund.strategy")}
           </label>
           <label className="block">
             <span className="text-sm font-medium text-slate-700">결성 주체</span>

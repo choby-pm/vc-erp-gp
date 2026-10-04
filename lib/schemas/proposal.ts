@@ -59,3 +59,11 @@ export const lpProposalResponseSchema = z
 export type CreateProposalInput = z.infer<typeof createProposalSchema>;
 export type UpdateProposalInput = z.infer<typeof updateProposalSchema>;
 export type ProposalTransitionInput = z.infer<typeof proposalTransitionSchema>;
+
+// LP ERP 출자사업 공고 지원 (D47). 기획 중 · 모집 중 조합으로 부문 하나에 지원한다
+export const lpCallApplySchema = z.object({
+  fund_id: z.uuid("조합을 선택하세요"),
+  track_id: z.uuid("모집 부문을 선택하세요"),
+  proposed_amount: amount("요청 출자액"),
+  memo,
+});
