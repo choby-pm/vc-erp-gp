@@ -41,6 +41,23 @@ export type ProposalItem = {
   applied_at: Date | null;
   apply_sent_at: Date | null;
   apply_error: string | null;
+  lp_selection_terms: LpSelectionTerms | null; // LP가 확약하며 붙인 선정 조건 (D47)
+};
+
+// 앵커 조건 (D47, LP L55): LP 선정 조건에서 계산한 결성 요건
+// · 필요한 최소 결성액 = max(확약 ÷ 출자 비율 상한, 최소 결성 규모) — 비율 상한을 지키려면 결성액이 그만큼 커야 한다
+// · 남은 모집액 = 필요한 최소 결성액 − 지금 확약 합계 (0 아래면 0)
+export type AnchorCondition = {
+  lp_name: string;
+  program_name: string | null;
+  loc_amount: number;
+  formation_deadline: string;
+  days_left: number;
+  max_commitment_ratio: number | null;
+  min_fund_size_amount: number | null;
+  key_person_condition: string | null;
+  required_fund_amount: number;
+  remaining_amount: number;
 };
 
 export type FundraisingSummary = {
@@ -50,6 +67,7 @@ export type FundraisingSummary = {
   achievement_ratio: number; // 확약 합 ÷ 목표 결성액. 100%를 넘을 수 있다
   pipeline_amount: number; // 제안·검토 중인 제안 금액 합 (참고용)
   counts: Record<ProposalStatus, number>;
+  anchors: AnchorCondition[]; // LP 선정 조건이 붙은 확약 (D47)
 };
 
 export type FundProposals = {
@@ -70,7 +88,7 @@ export async function listProposals(fundId: string): Promise<FundProposals> {
   const items = await sql<ProposalItem[]>`
     select p.id, p.lp_id, lp.name as lp_name, lp.lp_type, p.status, p.proposed_amount, p.loc_amount,
            p.proposed_date, p.decided_date, p.decided_via, p.memo,
-           p.program_name, p.track_name, p.applied_at, p.apply_sent_at, p.apply_error,
+           p.program_name, p.track_name, p.applied_at, p.apply_sent_at, p.apply_error, p.lp_selection_terms,
            count(n.id)::int as send_count, max(n.sent_at) as last_sent_at
     from lp_proposals p
     join limited_partners lp on lp.id = p.lp_id
@@ -101,9 +119,35 @@ export async function listProposals(fundId: string): Promise<FundProposals> {
       achievement_ratio: fund.target_amount > 0 ? committed / fund.target_amount : 0,
       pipeline_amount: pipeline,
       counts,
+      anchors: anchorsOf(items, committed),
     },
     items,
   };
+}
+
+function anchorsOf(items: ProposalItem[], committedTotal: number): AnchorCondition[] {
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+  return items
+    .filter((p) => p.status === "committed" && p.lp_selection_terms && p.loc_amount)
+    .map((p) => {
+      const t = p.lp_selection_terms!;
+      const loc = Number(p.loc_amount);
+      const byRatio = t.max_commitment_ratio ? Math.ceil(loc / t.max_commitment_ratio) : 0;
+      const required = Math.max(byRatio, t.min_fund_size_amount ?? 0);
+      return {
+        lp_name: p.lp_name,
+        program_name: t.program_name,
+        loc_amount: loc,
+        formation_deadline: t.formation_deadline,
+        days_left: Math.round((Date.parse(t.formation_deadline) - Date.parse(today)) / 86_400_000),
+        max_commitment_ratio: t.max_commitment_ratio,
+        min_fund_size_amount: t.min_fund_size_amount,
+        key_person_condition: t.key_person_condition,
+        required_fund_amount: required,
+        remaining_amount: Math.max(0, required - committedTotal),
+      };
+    })
+    .sort((a, b) => a.formation_deadline.localeCompare(b.formation_deadline));
 }
 
 // ─── 공통 ──────────────────────────────────────────────────────────────────
@@ -245,6 +289,15 @@ export async function transitionProposal(fundId: string, proposalId: string, inp
 
 export type LpProposalDecision = "reviewing" | "committed" | "declined";
 
+// LP가 확약하며 붙인 선정 조건 (D47, LP L55). 그 GP 하나와 맺은 약속 — 공고 조건(모든 GP 같음)과 다르다
+export type LpSelectionTerms = {
+  formation_deadline: string;
+  max_commitment_ratio: number | null;
+  min_fund_size_amount: number | null;
+  key_person_condition: string | null;
+  program_name: string | null;
+};
+
 // LP 기관용 ERP가 심사 결과를 직접 알려준다: 검토 시작 / 확약(확약 금액) / 거절.
 // · 같은 요청을 다시 보내면 결과가 같다: 이미 그 상태(확약이면 같은 금액)면 바꾸지 않고 changed = false
 // · 확약·거절은 되돌릴 수 없다 (BR-PROP-01). 다른 결정·다른 금액으로 바꾸려 하면 PROPOSAL_CLOSED
@@ -253,7 +306,7 @@ export type LpProposalDecision = "reviewing" | "committed" | "declined";
 export async function respondFromLpSystem(
   lpId: string,
   proposalId: string,
-  input: { decision: LpProposalDecision; loc_amount: number | null; decided_date: string | null },
+  input: { decision: LpProposalDecision; loc_amount: number | null; decided_date: string | null; terms?: LpSelectionTerms | null },
 ) {
   assertUuid(proposalId, "출자 제안을");
   return sql.begin(async (tx) => {
@@ -261,7 +314,8 @@ export async function respondFromLpSystem(
     const [found] = await tx<{ fund_id: string }[]>`
       select p.fund_id from lp_proposals p
       where p.id = ${proposalId} and p.lp_id = ${lpId}
-        and exists (select 1 from notices n where n.source_type = 'lp_proposal' and n.source_id = p.id and n.status = 'sent')
+        and (p.applied_at is not null -- 공고 지원(D47)은 통지 없이도 LP가 아는 제안이다
+             or exists (select 1 from notices n where n.source_type = 'lp_proposal' and n.source_id = p.id and n.status = 'sent'))
     `;
     if (!found) throw notFound("출자 제안을");
 
@@ -272,7 +326,11 @@ export async function respondFromLpSystem(
     // 이미 원하는 상태면 그대로 (다시 보내기)
     const same =
       p.status === input.decision && (input.decision !== "committed" || p.loc_amount === input.loc_amount);
-    if (same) return { changed: false };
+    if (same) {
+      // 같은 확약을 다시 보내면서 선정 조건을 처음 보내거나 고쳐 보낸 경우 조건만 반영한다
+      if (input.decision === "committed" && input.terms) await tx`update lp_proposals set lp_selection_terms = ${tx.json(input.terms as never)} where id = ${proposalId}`;
+      return { changed: false };
+    }
 
     if (p.status === "committed" || p.status === "declined") {
       const detail = p.status === "committed" ? `${formatKRW(p.loc_amount ?? 0)}으로 확약된` : "거절된";
@@ -294,7 +352,8 @@ export async function respondFromLpSystem(
     }
     if (input.decision === "committed") {
       await tx`
-        update lp_proposals set status = 'committed', loc_amount = ${input.loc_amount}, decided_date = ${decidedDate}, decided_via = 'lp_system'
+        update lp_proposals set status = 'committed', loc_amount = ${input.loc_amount}, decided_date = ${decidedDate}, decided_via = 'lp_system',
+               lp_selection_terms = ${input.terms ? tx.json(input.terms as never) : null}
         where id = ${proposalId}
       `;
     } else {

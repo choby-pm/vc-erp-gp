@@ -3,7 +3,7 @@ import { AppError, assertUuid, notFound } from "@/lib/api/errors";
 import type { DistributionComponent, FundStatus, FundType, InstitutionType, LpType, ManagerRole, NoticeType, ProposalStatus, VoteChoice } from "@/lib/labels";
 import { openAttachment, publicAttachments } from "@/lib/services/attachments";
 import { recordLpVotes } from "@/lib/services/meetings";
-import { respondFromLpSystem, type DecidedVia, type LpProposalDecision } from "@/lib/services/proposals";
+import { respondFromLpSystem, type DecidedVia, type LpProposalDecision, type LpSelectionTerms } from "@/lib/services/proposals";
 import { termsEffectiveAt } from "@/lib/services/terms";
 
 // LP 연동 API가 돌려주는 데이터 (05 API 설계 5장, 03 DB 설계 7장 LP 공개 등급)
@@ -282,7 +282,7 @@ export async function lpProposals(lpId: string) {
 export async function lpRespondProposal(
   lpId: string,
   proposalId: string,
-  input: { decision: LpProposalDecision; loc_amount: number | null; decided_date: string | null },
+  input: { decision: LpProposalDecision; loc_amount: number | null; decided_date: string | null; terms?: LpSelectionTerms | null },
 ) {
   await loadLp(lpId);
   const { changed } = await respondFromLpSystem(lpId, proposalId, input);

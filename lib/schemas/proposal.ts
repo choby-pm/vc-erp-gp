@@ -50,8 +50,20 @@ export const lpProposalResponseSchema = z
     decision: z.enum(["reviewing", "committed", "declined"], { error: "decision 은 reviewing / committed / declined 중 하나입니다" }),
     loc_amount: amount("확약 금액").nullish().transform((v) => v ?? null),
     decided_date: date("결정일").nullish().transform((v) => v ?? null),
+    // 확약과 함께 오는 LP 선정 조건 (D47, LP L55). 예전 LP는 보내지 않는다
+    terms: z
+      .object({
+        formation_deadline: date("결성 기한"),
+        max_commitment_ratio: z.number().gt(0).max(1).nullish().transform((v) => v ?? null),
+        min_fund_size_amount: z.number().int().positive().nullish().transform((v) => v ?? null),
+        key_person_condition: z.string().trim().max(500).nullish().transform((v) => (v ? v : null)),
+        program_name: z.string().trim().max(200).nullish().transform((v) => (v ? v : null)),
+      })
+      .nullish()
+      .transform((v) => v ?? null),
   })
   .superRefine((v, ctx) => {
+    if (v.decision !== "committed" && v.terms) ctx.addIssue({ code: "custom", path: ["terms"], message: "선정 조건은 확약할 때만 보냅니다" });
     if (v.decision === "committed" && v.loc_amount === null) ctx.addIssue({ code: "custom", path: ["loc_amount"], message: "확약하려면 확약 금액을 입력하세요" });
     if (v.decision !== "committed" && v.loc_amount !== null) ctx.addIssue({ code: "custom", path: ["loc_amount"], message: "확약 금액은 확약할 때만 보냅니다" });
   });
